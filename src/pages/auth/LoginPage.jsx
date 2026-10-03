@@ -44,11 +44,14 @@ export default function LoginPage() {
       navigate(redirect, { replace: true })
     } catch (err) {
       const status = err.response?.status
-      if (status === 401) setError('Identifiants invalides. Vérifiez votre email et mot de passe.')
+      const serverMsg = err.response?.data?.error || err.response?.data?.detail
+      if (serverMsg) setError(serverMsg)
+      else if (status === 401) setError('Identifiants invalides. Vérifiez votre email et mot de passe.')
       else if (status === 403) setError('Votre compte est inactif. Contactez un administrateur.')
       else if (status === 429) setError('Trop de tentatives. Réessayez dans quelques minutes.')
       else setError('Erreur de connexion. Vérifiez votre connexion réseau.')
     } finally {
+
       setLoading(false)
     }
   }

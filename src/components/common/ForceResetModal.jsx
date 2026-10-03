@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, LockKeyhole, AlertTriangle } from 'lucide-react'
 import Button from './Button'
 import Alert from './Alert'
 import { passwordResetConfirm } from '../../services/authService'
@@ -45,8 +45,8 @@ export default function ForceResetModal({ uid, token, onSuccess }) {
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-7 z-10">
         {/* Icône + Titre */}
         <div className="flex flex-col items-center text-center mb-6">
-          <div className="h-14 w-14 rounded-full bg-orange-100 flex items-center justify-center mb-4">
-            <ShieldCheck className="h-7 w-7 text-orange-500" />
+          <div className="h-14 w-14 rounded-2xl bg-navy-900/5 border border-navy-900/10 flex items-center justify-center mb-4">
+            <LockKeyhole className="h-7 w-7 text-primary-600" />
           </div>
           <h2 className="text-xl font-bold text-gray-900">Changez votre mot de passe</h2>
           <p className="text-sm text-gray-500 mt-2 max-w-xs">
@@ -56,9 +56,9 @@ export default function ForceResetModal({ uid, token, onSuccess }) {
         </div>
 
         {/* Badge non-ignorable */}
-        <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-4 py-2.5 mb-5">
-          <span className="text-orange-500 text-base">⚠️</span>
-          <p className="text-xs text-orange-700 font-medium">
+        <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-5">
+          <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+          <p className="text-xs text-amber-700 font-medium">
             Cette étape est obligatoire et ne peut pas être ignorée.
           </p>
         </div>
@@ -75,15 +75,17 @@ export default function ForceResetModal({ uid, token, onSuccess }) {
               <input
                 type={showNew ? 'text' : 'password'}
                 placeholder="••••••••"
-                className={`input-field pr-12 text-sm ${errors.new_password ? 'input-error' : ''}`}
+                autoComplete="new-password"
+                className={`input-field pr-10 text-sm ${errors.new_password ? 'input-error' : ''}`}
                 {...register('new_password', {
                   required: 'Obligatoire.',
                   minLength: { value: 8, message: 'Minimum 8 caractères.' },
                 })}
               />
               <button type="button" onClick={() => setShowNew(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                {showNew ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                tabIndex={-1}>
+                {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
             {errors.new_password && (
@@ -100,15 +102,17 @@ export default function ForceResetModal({ uid, token, onSuccess }) {
               <input
                 type={showConfirm ? 'text' : 'password'}
                 placeholder="••••••••"
-                className={`input-field pr-12 text-sm ${errors.new_password_confirm ? 'input-error' : ''}`}
+                autoComplete="new-password"
+                className={`input-field pr-10 text-sm ${errors.new_password_confirm ? 'input-error' : ''}`}
                 {...register('new_password_confirm', {
                   required: 'Obligatoire.',
                   validate: v => v === newPassword || 'Les mots de passe ne correspondent pas.',
                 })}
               />
               <button type="button" onClick={() => setShowConfirm(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                {showConfirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                tabIndex={-1}>
+                {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
             {errors.new_password_confirm && (

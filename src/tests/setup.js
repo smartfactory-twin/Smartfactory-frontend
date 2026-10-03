@@ -13,6 +13,10 @@ const localStorageMock = (() => {
 })()
 Object.defineProperty(window, 'localStorage', { value: localStorageMock })
 
+// ── API navigateur manquante dans jsdom (prévisualisation des images) ──────────
+window.URL.createObjectURL = vi.fn(() => 'blob:preview')
+window.URL.revokeObjectURL = vi.fn()
+
 // ── Reset mocks entre chaque test ─────────────────────────────────────────────
 beforeEach(() => {
   localStorage.clear()

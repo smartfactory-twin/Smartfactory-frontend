@@ -1,15 +1,14 @@
-import api from './api'
-
 /**
- * GET /notifications/  — notifications de l'utilisateur connecté
- * Backend non encore implémenté (Sprint 2+).
+ * notificationService.js
+ * Module 3 — non encore implémenté côté backend.
+ * Retourne des données vides pour éviter les 404 en console.
  */
+
 export const getNotifications = async (params = {}) => {
-  const { data } = await api.get('/notifications/', { params })
-  return data
+  // TODO Module 3 : return api.get('/notifications/', { params }).then(r => r.data)
+  return { results: [], count: 0 }
 }
 
-export const markAsRead = async (id) => {
-  const { data } = await api.patch(`/notifications/${id}/`, { lu: true })
-  return data
-}
+export const markAsRead = async (id) => null
+
+export const markAllAsRead = async () => null

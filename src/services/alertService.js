@@ -1,10 +1,14 @@
-import api from './api'
-
 /**
- * GET /alerts/  — liste des alertes actives
- * Backend non encore implémenté (Sprint 2+).
+ * alertService.js
+ * Module 3 — non encore implémenté côté backend.
+ * Retourne des données vides pour éviter les 404 en console.
  */
+
 export const getAlerts = async (params = {}) => {
-  const { data } = await api.get('/alerts/', { params })
-  return data
+  // TODO Module 3 : return api.get('/alerts/', { params }).then(r => r.data)
+  return { results: [], count: 0 }
 }
+
+export const getAlert = async (id) => null
+
+export const acknowledgeAlert = async (id) => null

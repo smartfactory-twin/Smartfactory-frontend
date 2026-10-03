@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import {
-  UserPlus, Download, Search, X, Loader2,
+  UserPlus, Download, Upload, Search, X, Loader2,
   Eye, Trash2, Mail, Shield, Phone, Calendar,
-  AlertTriangle, CheckCircle,
+  AlertTriangle, CheckCircle, Pencil, Info,
 } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
 import Alert from '../../components/common/Alert'
 import Button from '../../components/common/Button'
-import { adminCreateUser, listUsers, deleteUser } from '../../services/authService'
+import CsvImportUsersModal from '../../components/users/CsvImportUsersModal'
+import { adminCreateUser, listUsers, deleteUser, updateUserAdmin } from '../../services/authService'
 
 const ROLE_LABELS = { ADMIN: 'Administrateur', TECHNICIEN: 'Technicien', OPERATEUR: 'Opérateur' }
 const ROLE_COLORS = {
@@ -71,12 +72,13 @@ function AddUserModal({ onClose, onSuccess }) {
             <select className="input-field text-sm" {...register('role')}>
               <option value="OPERATEUR">Opérateur</option>
               <option value="TECHNICIEN">Technicien</option>
-              <option value="ADMIN">Administrateur</option>
             </select>
           </div>
           <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-            <span className="text-blue-500 text-sm mt-0.5">ℹ️</span>
-            <p className="text-xs text-blue-700 leading-relaxed">Un mot de passe temporaire sécurisé sera généré et envoyé par email. L'utilisateur devra le changer à sa première connexion.</p>
+            <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-blue-700 leading-relaxed">
+              Un mot de passe temporaire sera généré et envoyé par email. L'utilisateur disposera de <strong>48 heures</strong> pour effectuer son premier login et définir son mot de passe. Le compte est inactif par défaut jusqu'à cette étape.
+            </p>
           </div>
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" onClick={onClose} className="flex-1" type="button">Annuler</Button>
@@ -87,6 +89,7 @@ function AddUserModal({ onClose, onSuccess }) {
     </div>
   )
 }
+
 
 /* ── Modal Détails Utilisateur ─────────────────────────────────────── */
 function UserDetailModal({ user: u, onClose }) {
@@ -137,9 +140,12 @@ function UserDetailModal({ user: u, onClose }) {
           {u.must_reset_password && (
             <div className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-lg p-3">
               <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-orange-700">Cet utilisateur n'a pas encore changé son mot de passe temporaire.</p>
+              <p className="text-xs text-orange-700">
+                En attente du premier login (délai 48h). Le compte reste inactif par défaut jusqu'au changement du mot de passe.
+              </p>
             </div>
           )}
+
         </div>
 
         <Button variant="secondary" onClick={onClose} className="w-full mt-5">Fermer</Button>
@@ -155,6 +161,87 @@ function InfoRow({ icon: Icon, label, value }) {
       <div>
         <p className="text-[11px] text-gray-400">{label}</p>
         <p className="text-sm font-medium text-gray-800">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+/* ── Modal Modifier Utilisateur ───────────────────────────────────── */
+function EditUserModal({ user: u, onClose, onSuccess }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState(null)
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    defaultValues: {
+      prenom: u.prenom ?? '',
+      nom:    u.nom    ?? '',
+      role:   u.role   ?? 'OPERATEUR',
+      actif:  u.actif  ?? true,
+    },
+  })
+
+  const onSubmit = async (data) => {
+    setLoading(true); setError(null)
+    try {
+      await updateUserAdmin(u.id, {
+        prenom: data.prenom.trim(),
+        nom:    data.nom.trim(),
+        role:   data.role,
+        actif:  data.actif === 'true' || data.actif === true,
+      })
+      onSuccess()
+    } catch (err) {
+      const d = err?.response?.data
+      setError(d?.role?.[0] ?? d?.detail ?? 'Erreur lors de la modification.')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 z-10">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Modifier l'utilisateur</h2>
+            <p className="text-sm text-gray-500 mt-0.5">{u.email}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="h-5 w-5 text-gray-400" /></button>
+        </div>
+        {error && <Alert type="error" message={error} dismissible className="mb-4" />}
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Prénom</label>
+              <input className={`input-field text-sm ${errors.prenom ? 'input-error' : ''}`}
+                {...register('prenom', { required: 'Obligatoire' })} />
+              {errors.prenom && <p className="mt-1 text-xs text-red-600">{errors.prenom.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom</label>
+              <input className={`input-field text-sm ${errors.nom ? 'input-error' : ''}`}
+                {...register('nom', { required: 'Obligatoire' })} />
+              {errors.nom && <p className="mt-1 text-xs text-red-600">{errors.nom.message}</p>}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Rôle</label>
+            <select className="input-field text-sm" {...register('role')}>
+              <option value="OPERATEUR">Opérateur</option>
+              <option value="TECHNICIEN">Technicien</option>
+              {u.role === 'ADMIN' && <option value="ADMIN">Administrateur</option>}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Statut du compte</label>
+            <select className="input-field text-sm" {...register('actif')}>
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" onClick={onClose} className="flex-1" type="button">Annuler</Button>
+            <Button type="submit" loading={loading} className="flex-1">Enregistrer</Button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -192,6 +279,8 @@ export default function UsersPage() {
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
   const [showAddModal, setShowAdd]  = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [detailUser, setDetailUser] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting]     = useState(false)
@@ -250,6 +339,8 @@ export default function UsersPage() {
   return (
     <AdminLayout>
       {showAddModal    && <AddUserModal      onClose={() => setShowAdd(false)} onSuccess={handleAddSuccess} />}
+      {showImport      && <CsvImportUsersModal onClose={() => setShowImport(false)} onSuccess={() => { fetchUsers(); setSuccess('Import terminé. Les nouveaux utilisateurs ont reçu leur email.'); setTimeout(() => setSuccess(null), 6000) }} />}
+      {editTarget      && <EditUserModal     user={editTarget} onClose={() => setEditTarget(null)} onSuccess={() => { setEditTarget(null); fetchUsers(); setSuccess('Utilisateur mis à jour.'); setTimeout(() => setSuccess(null), 4000) }} />}
       {detailUser      && <UserDetailModal   user={detailUser} onClose={() => setDetailUser(null)} />}
       {deleteTarget    && <DeleteConfirmModal user={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDeleteConfirm} loading={deleting} />}
 
@@ -262,6 +353,9 @@ export default function UsersPage() {
         <div className="flex gap-2">
           <Button variant="secondary" onClick={handleExport} disabled={!users.length}>
             <Download className="h-4 w-4 mr-1.5" /> Exporter
+          </Button>
+          <Button variant="secondary" onClick={() => setShowImport(true)}>
+            <Upload className="h-4 w-4 mr-1.5" /> Importer CSV
           </Button>
           <Button onClick={() => setShowAdd(true)}>
             <UserPlus className="h-4 w-4 mr-1.5" /> Ajouter
@@ -333,6 +427,14 @@ export default function UsersPage() {
                         className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
                       >
                         <Eye className="h-4 w-4" />
+                      </button>
+                      {/* Modifier */}
+                      <button
+                        onClick={() => setEditTarget(u)}
+                        title="Modifier"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        <Pencil className="h-4 w-4" />
                       </button>
                       {/* Supprimer */}
                       <button

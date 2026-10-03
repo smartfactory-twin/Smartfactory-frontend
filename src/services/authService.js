@@ -73,6 +73,15 @@ export const deleteUser = async (id) => {
 }
 
 /**
+ * PATCH /auth/users/:id/update/  (ADMIN seulement)
+ * Modifie le rôle, le statut actif, nom, prénom
+ */
+export const updateUserAdmin = async (id, data) => {
+  const res = await api.patch(`/auth/users/${id}/update/`, data)
+  return res.data
+}
+
+/**
  * GET /auth/users/list/  (ADMIN seulement)
  * Liste paginée des utilisateurs avec filtres optionnels
  * @param {Object} params - search, role, actif, ordering, page

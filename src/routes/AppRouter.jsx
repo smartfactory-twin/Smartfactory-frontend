@@ -14,6 +14,27 @@ import AdminUsersPage      from '../pages/admin/UsersPage'
 import AdminProfilePage    from '../pages/admin/ProfilePage'
 import PlaceholderPage     from '../pages/PlaceholderPage'
 
+// Machines (Module 2)
+import MachinesListPage    from '../pages/machines/MachinesListPage'
+import MachineDetailPage   from '../pages/machines/MachineDetailPage'
+import MachineFormPage     from '../pages/machines/MachineFormPage'
+
+// Équipements — hiérarchie UC-04
+import HierarchiePage      from '../pages/equipements/HierarchiePage'
+import UsinesPage          from '../pages/equipements/UsinesPage'
+import ZonesPage           from '../pages/equipements/ZonesPage'
+import LignesPage          from '../pages/equipements/LignesPage'
+
+// Module 3 — Capteurs & Données IoT
+import CapteursPage        from '../pages/equipements/CapteursPage'
+import CapteurFormPage     from '../pages/equipements/CapteurFormPage'
+import CapteurDetailPage   from '../pages/equipements/CapteurDetailPage'
+import SensorsImportPage   from '../pages/equipements/SensorsImportPage'
+import ReadingsImportPage  from '../pages/equipements/ReadingsImportPage'
+
+// Module 4 — Inspection visuelle par IA
+import InspectionsPage     from '../pages/inspections/InspectionsPage'
+
 // Technician
 import TechDashboardPage   from '../pages/technician/DashboardPage'
 import TechProfilePage     from '../pages/technician/ProfilePage'
@@ -49,6 +70,45 @@ export default function AppRouter() {
         <Route element={<ProtectedRoute />}>
           <Route path="/"          element={<RoleRedirect />} />
           <Route path="/dashboard" element={<RoleRedirect />} />
+        </Route>
+
+        {/* ── Équipements — hiérarchie (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/equipements"              element={<HierarchiePage />} />
+          <Route path="/equipements/usines"       element={<UsinesPage />} />
+          <Route path="/equipements/zones"        element={<ZonesPage />} />
+          <Route path="/equipements/lignes"       element={<LignesPage />} />
+        </Route>
+
+        {/* ── Module 3 — Capteurs & Données IoT (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/capteurs"                 element={<CapteursPage />} />
+          <Route path="/capteurs/import-sensors"  element={<SensorsImportPage />} />
+          <Route path="/capteurs/import-readings" element={<ReadingsImportPage />} />
+          <Route path="/capteurs/nouveau"         element={<CapteurFormPage />} />
+          <Route path="/capteurs/:id"             element={<CapteurDetailPage />} />
+        </Route>
+
+        {/* ── Capteurs création/édition (ADMIN uniquement) ── */}
+        <Route element={<ProtectedRoute roles={['ADMIN']} />}>
+          <Route path="/capteurs/:id/modifier"    element={<CapteurFormPage />} />
+        </Route>
+
+        {/* ── Machines (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/machines"     element={<MachinesListPage />} />
+          <Route path="/machines/:id" element={<MachineDetailPage />} />
+        </Route>
+
+        {/* ── Module 4 — Inspection visuelle par IA (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/inspections" element={<InspectionsPage />} />
+        </Route>
+
+        {/* ── Machines création/édition (ADMIN + TECHNICIEN) ── */}
+        <Route element={<ProtectedRoute roles={['ADMIN', 'TECHNICIEN']} />}>
+          <Route path="/machines/new"       element={<MachineFormPage />} />
+          <Route path="/machines/:id/edit"  element={<MachineFormPage />} />
         </Route>
 
         {/* ── ADMIN ── */}
