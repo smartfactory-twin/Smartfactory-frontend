@@ -1,14 +1,31 @@
-/**
- * alertService.js
- * Module 3 — non encore implémenté côté backend.
- * Retourne des données vides pour éviter les 404 en console.
- */
+import api from './api'
 
 export const getAlerts = async (params = {}) => {
-  // TODO Module 3 : return api.get('/alerts/', { params }).then(r => r.data)
-  return { results: [], count: 0 }
+  const { data } = await api.get('/alertes/', { params })
+  return data
 }
 
-export const getAlert = async (id) => null
+export const getAlert = async (id) => {
+  const { data } = await api.get(`/alertes/${id}/`)
+  return data
+}
 
-export const acknowledgeAlert = async (id) => null
+export const acknowledgeAlert = async (id, commentaire) => {
+  const { data } = await api.post(`/alertes/${id}/acquitter/`, { commentaire })
+  return data
+}
+
+export const prepareOtFromAlert = async (id) => {
+  const { data } = await api.post(`/alertes/${id}/preparer-ot/`)
+  return data
+}
+
+export const getAlertStats = async (params = {}) => {
+  const { data } = await api.get('/alertes/statistiques/', { params })
+  return data
+}
+
+export const getAlertCounter = async () => {
+  const { data } = await api.get('/alertes/compteur/')
+  return data
+}

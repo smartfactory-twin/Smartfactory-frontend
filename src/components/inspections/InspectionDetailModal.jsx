@@ -18,7 +18,10 @@ export default function InspectionDetailModal({ inspection, onClose, onViewImage
   if (!inspection) return null
 
   const result = inspection.resultat_analyse
-  const confidence = inspection.score_confiance ?? result?.confidence
+  const detected = inspection.defect_detected ?? result?.defect_detected
+  const defectType = inspection.defect_type || result?.defect_type
+  const confidence = inspection.confidence ?? inspection.score_confiance ?? result?.confidence
+  const observation = inspection.observation || result?.comment
   const pct = confidence != null ? Math.round(confidence * 100) : null
 
   return (
@@ -73,11 +76,11 @@ export default function InspectionDetailModal({ inspection, onClose, onViewImage
               <p className="text-sm font-semibold text-gray-900">Résultat de l'analyse IA</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Défaut détecté">
-                  <span className={result.defect_detected ? 'text-red-600' : 'text-green-600'}>
-                    {result.defect_detected ? 'Oui' : 'Non'}
+                  <span className={detected ? 'text-red-600' : 'text-green-600'}>
+                    {detected ? 'Oui' : 'Non'}
                   </span>
                 </Field>
-                <Field label="Type de défaut">{result.defect_type || 'Aucun'}</Field>
+                <Field label="Type de défaut">{defectType || 'Aucun'}</Field>
                 <Field label="Score de confiance">{pct != null ? `${pct} %` : '—'}</Field>
                 <Field label="Localisation">
                   {result.localization
@@ -87,7 +90,7 @@ export default function InspectionDetailModal({ inspection, onClose, onViewImage
               </div>
               <div>
                 <p className="text-xs text-gray-500">Observation</p>
-                <p className="text-sm text-gray-800">{result.comment || '—'}</p>
+                <p className="text-sm text-gray-800">{observation || '—'}</p>
               </div>
             </div>
           )}

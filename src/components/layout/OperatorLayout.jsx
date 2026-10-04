@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuthContext } from '../../context/AuthContext'
 import logo from '../../assets/logo.png'
+import NotificationBell from './NotificationBell'
 
 function NavItem({ to, icon: Icon, label, collapsed, end = false }) {
   return (
@@ -150,9 +151,7 @@ export default function OperatorLayout({ children, pageTitle = 'Dashboard' }) {
             <p className="text-xs text-gray-400">SmartFactory Twin</p>
           </div>
           <div className="flex items-center gap-3">
-            <NavLink to="/operator/notifications" className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <Bell className="h-5 w-5 text-gray-500" />
-            </NavLink>
+            <NotificationBell role={user?.role} />
             <NavLink to="/operator/profile" className="flex items-center gap-2.5">
               {user?.photo ? (
                 <img src={user.photo} alt="avatar" className="h-9 w-9 rounded-lg object-cover" />

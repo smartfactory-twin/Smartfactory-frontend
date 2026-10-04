@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuthContext } from '../../context/AuthContext'
 import logo from '../../assets/logo.png'
+import NotificationBell from './NotificationBell'
 
 function NavItem({ to, icon: Icon, label, collapsed, end = false }) {
   return (
@@ -158,6 +159,7 @@ export default function AdminLayout({ children, pageTitle = "Vue d'ensemble" }) 
         {/* Navigation */}
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
           <NavItem to="/admin/dashboard" icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} end />
+          <NavItem to="/alertes" icon={Bell} label="Alertes" collapsed={collapsed} />
           <EquipementsGroup collapsed={collapsed} />
           <NavItem to="/admin/users"   icon={Users}       label="Utilisateurs" collapsed={collapsed} />
           <NavItem to="/admin/profile" icon={UserCircle}  label="Mon profil"   collapsed={collapsed} />
@@ -190,9 +192,7 @@ export default function AdminLayout({ children, pageTitle = "Vue d'ensemble" }) 
             <p className="text-xs text-gray-400">SmartFactory Twin</p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <Bell className="h-5 w-5 text-gray-500" />
-            </button>
+            <NotificationBell role={user?.role} />
             <NavLink to="/admin/profile" className="flex items-center gap-2.5">
               {user?.photo ? (
                 <img src={user.photo} alt="avatar" className="h-9 w-9 rounded-lg object-cover" />

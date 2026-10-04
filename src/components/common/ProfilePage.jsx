@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   User, Mail, Shield, Phone, KeyRound,
   CheckCircle, Eye, EyeOff, Pencil, Camera,
+  Loader2, Cpu, Building2, Layers, GitBranch, AlertTriangle,
 } from 'lucide-react'
 import Alert from './Alert'
 import Button from './Button'
 import { useAuthContext } from '../../context/AuthContext'
 import { updateProfile, changePassword } from '../../services/profileService'
+import { getMonPerimetre } from '../../services/perimetreService'
 
 const ROLE_COLORS = {
   ADMIN:      'bg-purple-100 text-purple-700',
@@ -321,6 +323,134 @@ function PasswordField({ label, show, onToggle, error, registration }) {
   )
 }
 
+/* ── Section "Mon périmètre d'accès" (lecture seule) ───────────────── */
+/* Les données proviennent de `GET /equipements/perimetres/mon-perimetre/`,
+   dont la liste des machines est calculée par le backend à partir des
+   `UserScope` : le compteur affiché est donc exactement celui qui s'applique
+   côté API. Aucune décision d'accès n'est prise ici.                       */
+
+const NIVEAU_ICON = { usine: Building2, zone: Layers, ligne: GitBranch, machine: Cpu }
+
+function MachineLine({ machine }) {
+  return (
+    <li className="text-xs text-gray-600 flex items-center gap-1.5">
+      <Cpu className="h-3 w-3 text-gray-400 flex-shrink-0" />
+      <span className="font-mono">{machine.identifiant_interne}</span>
+      <span className="text-gray-400">—</span>
+      <span>{machine.nom}</span>
+    </li>
+  )
+}
+
+function PerimetreTree({ affectations, machines }) {
+  return (
+    <div className="space-y-3">
+      {affectations.length === 0 && (
+        <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-yellow-800">
+            Aucune affectation configurée. Contactez l’administrateur pour demander un accès.
+          </p>
+        </div>
+      )}
+
+      {affectations.map(a => {
+        const Icon = NIVEAU_ICON[a.niveau] ?? Layers
+        const ids = a.cible_ids ?? {}
+        return (
+          <div key={a.id} className="p-3 bg-white border border-gray-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <Icon className="h-4 w-4 text-primary-500 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">{a.libelle}</p>
+                <p className="text-xs text-gray-500">
+                  {a.nb_machines_accessibles} machine(s) accessible(s)
+                </p>
+              </div>
+            </div>
+
+            {/* Chaîne hiérarchique Usine → Zone → Ligne → Machine */}
+            <ul className="mt-2 ml-4 space-y-0.5 text-xs text-gray-600">
+              {ids.usine   != null && <li className="font-medium">Usine #{ids.usine}</li>}
+              {ids.zone    != null && <li className="ml-3">Zone #{ids.zone}</li>}
+              {ids.ligne   != null && <li className="ml-6">Ligne #{ids.ligne}</li>}
+              {ids.machine != null && <li className="ml-9">Machine #{ids.machine}</li>}
+            </ul>
+
+            {/* Machines réellement ouvertes par CETTE affectation */}
+            {(a.machines_accessibles ?? []).length > 0 && (
+              <ul className="mt-2 ml-6 space-y-0.5">
+                {a.machines_accessibles.map(m => <MachineLine key={m.id} machine={m} />)}
+              </ul>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Affectations sans machine (ex. affectation à une zone vide). */}
+      {affectations.length > 0 && machines.length === 0 && (
+        <p className="text-xs text-gray-500">Aucune machine n’est actuellement accessible.</p>
+      )}
+    </div>
+  )
+}
+
+function MonPerimetreSection() {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(null)
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null)
+    getMonPerimetre()
+      .then(setData)
+      .catch(() => setError('Impossible de charger votre périmètre d’accès.'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 lg:col-span-2">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-start gap-3">
+          <Shield className="h-5 w-5 text-primary-500 mt-0.5" />
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">Mon périmètre d’accès</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Défini par l’administrateur. Cette section est en lecture seule.
+            </p>
+          </div>
+        </div>
+        {data && !data.acces_global && (
+          <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700">
+            <Cpu className="h-3.5 w-3.5" />
+            {data.nb_machines_accessibles} machine(s) accessible(s)
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+          <p className="text-sm text-gray-500">Chargement de votre périmètre…</p>
+        </div>
+      ) : error ? (
+        <Alert type="error" message={error} dismissible />
+      ) : data.acces_global ? (
+        <div className="flex items-start gap-2 bg-purple-50 border border-purple-100 rounded-lg p-3">
+          <Shield className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-purple-700">
+            Vous disposez d’un <strong>accès global</strong> à l’ensemble des installations.
+          </p>
+        </div>
+      ) : (
+        <PerimetreTree affectations={data.affectations} machines={data.machines} />
+      )}
+    </div>
+  )
+}
+
 /* ── Composant principal exporté ──────────────────────────────────── */
 export default function ProfilePage() {
   const { user, refreshUser } = useAuthContext()
@@ -340,6 +470,7 @@ export default function ProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 max-w-4xl">
         <PersonalInfoSection user={user} onUpdated={handleUpdated} />
         <ChangePasswordSection />
+        <MonPerimetreSection />
       </div>
     </div>
   )

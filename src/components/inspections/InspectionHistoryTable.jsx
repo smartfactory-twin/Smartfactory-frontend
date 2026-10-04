@@ -62,7 +62,8 @@ export default function InspectionHistoryTable({
           <tbody className="bg-white divide-y divide-gray-200">
             {inspections.map((insp) => {
               const result = insp.resultat_analyse
-              const detecte = result?.defect_detected
+              const detecte = insp.defect_detected ?? result?.defect_detected
+              const defectType = insp.defect_type || result?.defect_type
               return (
                 <tr key={insp.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
@@ -97,7 +98,7 @@ export default function InspectionHistoryTable({
                     {insp.statut_analyse === 'TERMINEE' ? (
                       detecte ? (
                         <span className="font-medium text-red-600">
-                          {result.defect_type || 'Défaut détecté'}
+                          {defectType || 'Défaut détecté'}
                         </span>
                       ) : (
                         <span className="font-medium text-green-600">Aucun défaut</span>
@@ -107,7 +108,7 @@ export default function InspectionHistoryTable({
                     )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
-                    {formatConfidence(insp.score_confiance)}
+                    {formatConfidence(insp.confidence ?? insp.score_confiance)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <InspectionStatusBadge status={insp.statut_analyse} />

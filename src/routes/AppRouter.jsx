@@ -35,15 +35,21 @@ import ReadingsImportPage  from '../pages/equipements/ReadingsImportPage'
 // Module 4 — Inspection visuelle par IA
 import InspectionsPage     from '../pages/inspections/InspectionsPage'
 
+// Module 8 — Alertes & Notifications
+import AlertesPage         from '../pages/alertes/AlertesPage'
+import NotificationsPage    from '../pages/alertes/NotificationsPage'
+
 // Technician
 import TechDashboardPage   from '../pages/technician/DashboardPage'
 import TechProfilePage     from '../pages/technician/ProfilePage'
 import TechSection         from '../pages/technician/PlaceholderSection'
+import TechMesuresPage      from '../pages/technician/MesuresPage'
 
 // Operator
 import OpDashboardPage     from '../pages/operator/DashboardPage'
 import OpProfilePage       from '../pages/operator/ProfilePage'
 import OpSection           from '../pages/operator/PlaceholderSection'
+import OpSurveillancePage  from '../pages/operator/SurveillancePage'
 
 function RoleRedirect() {
   const { user } = useAuthContext()
@@ -103,6 +109,8 @@ export default function AppRouter() {
         {/* ── Module 4 — Inspection visuelle par IA (tous rôles authentifiés) ── */}
         <Route element={<ProtectedRoute />}>
           <Route path="/inspections" element={<InspectionsPage />} />
+          <Route path="/alertes" element={<AlertesPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
 
         {/* ── Machines création/édition (ADMIN + TECHNICIEN) ── */}
@@ -128,11 +136,9 @@ export default function AppRouter() {
           <Route path="/technician/sensors"
             element={<TechSection title="Capteurs" description="Liste des capteurs de vos machines." />} />
           <Route path="/technician/measures"
-            element={<TechSection title="Mesures" description="Historique des mesures capteurs." />} />
-          <Route path="/technician/alerts"
-            element={<TechSection title="Alertes" description="Alertes actives et historique." />} />
-          <Route path="/technician/notifications"
-            element={<TechSection title="Notifications" description="Toutes vos notifications." />} />
+            element={<TechMesuresPage />} />
+          <Route path="/technician/alerts" element={<AlertesPage />} />
+          <Route path="/technician/notifications" element={<NotificationsPage />} />
           <Route path="/technician/profile"
             element={<TechProfilePage />} />
           <Route path="/technician/settings"
@@ -146,11 +152,9 @@ export default function AppRouter() {
           <Route path="/operator/machines"
             element={<OpSection title="Mes machines" description="Machines en surveillance." />} />
           <Route path="/operator/surveillance"
-            element={<OpSection title="Surveillance" description="Mesures capteurs en temps réel." />} />
-          <Route path="/operator/alerts"
-            element={<OpSection title="Alertes" description="Alertes sur vos machines." />} />
-          <Route path="/operator/notifications"
-            element={<OpSection title="Notifications" />} />
+            element={<OpSurveillancePage />} />
+          <Route path="/operator/alerts" element={<AlertesPage />} />
+          <Route path="/operator/notifications" element={<NotificationsPage />} />
           <Route path="/operator/profile"
             element={<OpProfilePage />} />
           <Route path="/operator/settings"

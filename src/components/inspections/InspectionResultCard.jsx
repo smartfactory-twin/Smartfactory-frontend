@@ -21,8 +21,10 @@ export default function InspectionResultCard({ inspection }) {
   if (!inspection) return null
 
   const result = inspection.resultat_analyse
-  const detected = result?.defect_detected
-  const confidence = inspection.score_confiance ?? result?.confidence
+  const detected = inspection.defect_detected ?? result?.defect_detected
+  const defectType = inspection.defect_type || result?.defect_type
+  const confidence = inspection.confidence ?? inspection.score_confiance ?? result?.confidence
+  const observation = inspection.observation || result?.comment || inspection.observations
   const pct = confidence != null ? Math.round(confidence * 100) : null
   const erreur = inspection.statut_analyse === 'ERREUR'
 
@@ -58,7 +60,7 @@ export default function InspectionResultCard({ inspection }) {
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <dt className="text-gray-500">Type de défaut</dt>
-              <dd className="font-medium text-gray-900">{result.defect_type || '—'}</dd>
+              <dd className="font-medium text-gray-900">{defectType || '—'}</dd>
             </div>
             <div>
               <dt className="text-gray-500">Localisation</dt>
@@ -84,7 +86,7 @@ export default function InspectionResultCard({ inspection }) {
             </div>
             <div className="sm:col-span-2">
               <dt className="text-gray-500">Observation</dt>
-              <dd className="text-gray-800">{result.comment || inspection.observations || '—'}</dd>
+              <dd className="text-gray-800">{observation || '—'}</dd>
             </div>
           </dl>
         </>
