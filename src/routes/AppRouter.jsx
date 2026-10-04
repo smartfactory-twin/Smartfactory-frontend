@@ -14,15 +14,42 @@ import AdminUsersPage      from '../pages/admin/UsersPage'
 import AdminProfilePage    from '../pages/admin/ProfilePage'
 import PlaceholderPage     from '../pages/PlaceholderPage'
 
+// Machines (Module 2)
+import MachinesListPage    from '../pages/machines/MachinesListPage'
+import MachineDetailPage   from '../pages/machines/MachineDetailPage'
+import MachineFormPage     from '../pages/machines/MachineFormPage'
+
+// Équipements — hiérarchie UC-04
+import HierarchiePage      from '../pages/equipements/HierarchiePage'
+import UsinesPage          from '../pages/equipements/UsinesPage'
+import ZonesPage           from '../pages/equipements/ZonesPage'
+import LignesPage          from '../pages/equipements/LignesPage'
+
+// Module 3 — Capteurs & Données IoT
+import CapteursPage        from '../pages/equipements/CapteursPage'
+import CapteurFormPage     from '../pages/equipements/CapteurFormPage'
+import CapteurDetailPage   from '../pages/equipements/CapteurDetailPage'
+import SensorsImportPage   from '../pages/equipements/SensorsImportPage'
+import ReadingsImportPage  from '../pages/equipements/ReadingsImportPage'
+
+// Module 4 — Inspection visuelle par IA
+import InspectionsPage     from '../pages/inspections/InspectionsPage'
+
+// Module 8 — Alertes & Notifications
+import AlertesPage         from '../pages/alertes/AlertesPage'
+import NotificationsPage    from '../pages/alertes/NotificationsPage'
+
 // Technician
 import TechDashboardPage   from '../pages/technician/DashboardPage'
 import TechProfilePage     from '../pages/technician/ProfilePage'
 import TechSection         from '../pages/technician/PlaceholderSection'
+import TechMesuresPage      from '../pages/technician/MesuresPage'
 
 // Operator
 import OpDashboardPage     from '../pages/operator/DashboardPage'
 import OpProfilePage       from '../pages/operator/ProfilePage'
 import OpSection           from '../pages/operator/PlaceholderSection'
+import OpSurveillancePage  from '../pages/operator/SurveillancePage'
 
 function RoleRedirect() {
   const { user } = useAuthContext()
@@ -51,6 +78,47 @@ export default function AppRouter() {
           <Route path="/dashboard" element={<RoleRedirect />} />
         </Route>
 
+        {/* ── Équipements — hiérarchie (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/equipements"              element={<HierarchiePage />} />
+          <Route path="/equipements/usines"       element={<UsinesPage />} />
+          <Route path="/equipements/zones"        element={<ZonesPage />} />
+          <Route path="/equipements/lignes"       element={<LignesPage />} />
+        </Route>
+
+        {/* ── Module 3 — Capteurs & Données IoT (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/capteurs"                 element={<CapteursPage />} />
+          <Route path="/capteurs/import-sensors"  element={<SensorsImportPage />} />
+          <Route path="/capteurs/import-readings" element={<ReadingsImportPage />} />
+          <Route path="/capteurs/nouveau"         element={<CapteurFormPage />} />
+          <Route path="/capteurs/:id"             element={<CapteurDetailPage />} />
+        </Route>
+
+        {/* ── Capteurs création/édition (ADMIN uniquement) ── */}
+        <Route element={<ProtectedRoute roles={['ADMIN']} />}>
+          <Route path="/capteurs/:id/modifier"    element={<CapteurFormPage />} />
+        </Route>
+
+        {/* ── Machines (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/machines"     element={<MachinesListPage />} />
+          <Route path="/machines/:id" element={<MachineDetailPage />} />
+        </Route>
+
+        {/* ── Module 4 — Inspection visuelle par IA (tous rôles authentifiés) ── */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/inspections" element={<InspectionsPage />} />
+          <Route path="/alertes" element={<AlertesPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+        </Route>
+
+        {/* ── Machines création/édition (ADMIN + TECHNICIEN) ── */}
+        <Route element={<ProtectedRoute roles={['ADMIN', 'TECHNICIEN']} />}>
+          <Route path="/machines/new"       element={<MachineFormPage />} />
+          <Route path="/machines/:id/edit"  element={<MachineFormPage />} />
+        </Route>
+
         {/* ── ADMIN ── */}
         <Route element={<ProtectedRoute roles={['ADMIN']} />}>
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
@@ -68,11 +136,9 @@ export default function AppRouter() {
           <Route path="/technician/sensors"
             element={<TechSection title="Capteurs" description="Liste des capteurs de vos machines." />} />
           <Route path="/technician/measures"
-            element={<TechSection title="Mesures" description="Historique des mesures capteurs." />} />
-          <Route path="/technician/alerts"
-            element={<TechSection title="Alertes" description="Alertes actives et historique." />} />
-          <Route path="/technician/notifications"
-            element={<TechSection title="Notifications" description="Toutes vos notifications." />} />
+            element={<TechMesuresPage />} />
+          <Route path="/technician/alerts" element={<AlertesPage />} />
+          <Route path="/technician/notifications" element={<NotificationsPage />} />
           <Route path="/technician/profile"
             element={<TechProfilePage />} />
           <Route path="/technician/settings"
@@ -86,11 +152,9 @@ export default function AppRouter() {
           <Route path="/operator/machines"
             element={<OpSection title="Mes machines" description="Machines en surveillance." />} />
           <Route path="/operator/surveillance"
-            element={<OpSection title="Surveillance" description="Mesures capteurs en temps réel." />} />
-          <Route path="/operator/alerts"
-            element={<OpSection title="Alertes" description="Alertes sur vos machines." />} />
-          <Route path="/operator/notifications"
-            element={<OpSection title="Notifications" />} />
+            element={<OpSurveillancePage />} />
+          <Route path="/operator/alerts" element={<AlertesPage />} />
+          <Route path="/operator/notifications" element={<NotificationsPage />} />
           <Route path="/operator/profile"
             element={<OpProfilePage />} />
           <Route path="/operator/settings"
