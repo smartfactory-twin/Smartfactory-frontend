@@ -48,6 +48,7 @@ function MachineNode({ machine, navigate }) {
         >
           {machine.nom}
         </button>
+        {machine.type_equipement && <span className="sf-hierarchy-type">{machine.type_equipement.replaceAll('_', ' ')}</span>}
         <span className="text-xs text-gray-400 font-mono hidden group-hover:inline">{machine.identifiant_interne}</span>
         <MachineStatusBadge status={machine.statut} />
       </div>
@@ -272,6 +273,11 @@ export default function HierarchiePage() {
           </button>
         </div>
       </div>
+
+      <nav className="sf-equipment-tabs" aria-label="Vues des équipements">
+        <button type="button" onClick={() => navigate('/machines')}>Tableau des équipements</button>
+        <button type="button" aria-current="page">Hiérarchie d’actifs</button>
+      </nav>
 
       {bannerMsg && (
         <div className="mb-4">

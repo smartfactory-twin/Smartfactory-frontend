@@ -90,7 +90,7 @@ export default function CapteursPage() {
               Gérer les capteurs associés aux machines et leurs données IoT
             </p>
           </div>
-          {role === 'ADMIN' && (
+          {(role === 'ADMIN' || role === 'TECHNICIEN') && (
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => navigate('/capteurs/nouveau')}
@@ -220,23 +220,23 @@ export default function CapteursPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                         <button
                           onClick={() => navigate(`/capteurs/${c.id}`)}
-                          className="text-gray-600 hover:text-gray-900"
+                          className="sf-action-icon sf-action-view"
                           title="Voir détails"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        {role === 'ADMIN' && (
+                        {(role === 'ADMIN' || role === 'TECHNICIEN') && (
                           <>
                             <button
                               onClick={() => navigate(`/capteurs/${c.id}/modifier`)}
-                              className="text-blue-600 hover:text-blue-900"
+                              className="sf-action-icon sf-action-edit"
                               title="Modifier"
                             >
                               <Edit className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDelete(c.id)}
-                              className="text-red-600 hover:text-red-900"
+                              className="sf-action-icon sf-action-delete"
                               title="Supprimer"
                             >
                               <Trash2 className="h-4 w-4" />

@@ -3,9 +3,9 @@ import { Upload, X, CheckCircle, AlertCircle, FileText } from 'lucide-react'
 import { importMachinesCSV } from '../../services/machineService'
 
 const CSV_TEMPLATE = [
-  'nom,identifiant_interne,numero_serie,marque,modele,date_installation,statut,ligne_production_id',
-  'Machine A,MCH-001,SN001,Siemens,S7-300,2024-01-15,NORMAL,',
-  'Machine B,MCH-002,SN002,ABB,IRB 1200,2024-03-20,DEGRADE,1',
+  'nom,identifiant_interne,numero_serie,type_equipement,marque,modele,date_installation,statut,ligne_production_id',
+  'Machine A,MCH-001,SN001,MOTEUR,Siemens,S7-300,2024-01-15,NORMAL,',
+  'Machine B,MCH-002,SN002,POMPE,ABB,IRB 1200,2024-03-20,DEGRADE,1',
 ].join('\n')
 
 export default function CsvImportModal({ onClose }) {

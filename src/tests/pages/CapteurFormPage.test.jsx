@@ -26,7 +26,7 @@ const EXISTING_SENSOR = {
 
 function renderForm(route = '/capteurs/nouveau') {
   const ctxValue = {
-    user: { id: 1, email: 'admin@smartfactory.dz', role: 'ADMIN' },
+    user: { id: 1, email: 'admin@smartfactory.com', role: 'ADMIN' },
     isAuthenticated: true,
     isLoading: false,
     logout: vi.fn(),

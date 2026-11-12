@@ -60,7 +60,7 @@ const ANALYZED = {
 
 function renderPage(role = 'ADMIN') {
   const ctxValue = {
-    user: { id: 1, email: 'admin@smartfactory.dz', role, prenom: 'Admin', nom: 'Test' },
+    user: { id: 1, email: 'admin@smartfactory.com', role, prenom: 'Admin', nom: 'Test' },
     isAuthenticated: true,
     isLoading: false,
     logout: vi.fn(),

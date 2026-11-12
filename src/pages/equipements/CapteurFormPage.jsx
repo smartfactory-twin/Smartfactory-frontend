@@ -10,6 +10,17 @@ import { useAuthContext } from '../../context/AuthContext'
 import { createCapteur, updateCapteur, getCapteur } from '../../services/sensorService'
 import { getMachines } from '../../services/machineService'
 
+const SENSOR_TYPES = [
+  { value: 'TEMPERATURE', label: 'Température', unit: '°C' },
+  { value: 'VIBRATION', label: 'Vibration', unit: 'mm/s' },
+  { value: 'PRESSION', label: 'Pression', unit: 'bar' },
+  { value: 'COURANT', label: 'Courant', unit: 'A' },
+  { value: 'VITESSE_RPM', label: 'Vitesse', unit: 'RPM' },
+  { value: 'DEBIT', label: 'Débit', unit: 'L/min' },
+  { value: 'NIVEAU_SONORE', label: 'Niveau sonore', unit: 'dB' },
+]
+const SENSOR_UNIT_BY_TYPE = Object.fromEntries(SENSOR_TYPES.map(({ value, unit }) => [value, unit]))
+
 export default function CapteurFormPage() {
   const { user } = useAuthContext()
   const navigate = useNavigate()
@@ -29,23 +40,13 @@ export default function CapteurFormPage() {
     nom: '',
     type_capteur: 'TEMPERATURE',
     machine: '',
-    unite: '',
+    unite: SENSOR_UNIT_BY_TYPE.TEMPERATURE,
     frequence_mesure: '',
     seuil_min: '',
     seuil_max: '',
     actif: true,
     description: '',
   })
-
-  const sensorTypes = [
-    { value: 'TEMPERATURE', label: 'Température (°C)' },
-    { value: 'VIBRATION', label: 'Vibration (mm/s)' },
-    { value: 'PRESSION', label: 'Pression (bar)' },
-    { value: 'COURANT', label: 'Courant (A)' },
-    { value: 'VITESSE_RPM', label: 'Vitesse (RPM)' },
-    { value: 'DEBIT', label: 'Débit (L/min)' },
-    { value: 'NIVEAU_SONORE', label: 'Niveau sonore (dB)' },
-  ]
 
   useEffect(() => {
     getMachines({ page_size: 200 }).then(res => {
@@ -62,7 +63,7 @@ export default function CapteurFormPage() {
           nom: data.nom || '',
           type_capteur: data.type_capteur || 'TEMPERATURE',
           machine: data.machine || '',
-          unite: data.unite || '',
+          unite: SENSOR_UNIT_BY_TYPE[data.type_capteur] || data.unite || '',
           frequence_mesure: data.frequence_mesure ?? '',
           seuil_min: data.seuil_min ?? '',
           seuil_max: data.seuil_max ?? '',
@@ -84,6 +85,7 @@ export default function CapteurFormPage() {
 
     const payload = {
       ...formData,
+      unite: SENSOR_UNIT_BY_TYPE[formData.type_capteur] || formData.unite,
       machine: parseInt(formData.machine),
       frequence_mesure: parseInt(formData.frequence_mesure),
       seuil_min: parseFloat(formData.seuil_min),
@@ -112,7 +114,8 @@ export default function CapteurFormPage() {
     const { name, value, type, checked } = e.target
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
+      ...(name === 'type_capteur' ? { unite: SENSOR_UNIT_BY_TYPE[value] || '' } : {}),
     }))
   }
 
@@ -204,28 +207,15 @@ export default function CapteurFormPage() {
                   className="input-field"
                   required
                 >
-                  {sensorTypes.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+                  {SENSOR_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.label} ({t.unit})</option>
                   ))}
                 </select>
+                <p className="mt-1.5 text-xs text-gray-500">Unité attribuée automatiquement : <strong>{SENSOR_UNIT_BY_TYPE[formData.type_capteur]}</strong></p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Unité de mesure *
-                </label>
-                <input
-                  type="text"
-                  name="unite"
-                  value={formData.unite}
-                  onChange={handleChange}
-                  className="input-field"
-                  placeholder="ex: °C, mm/s, bar, A, RPM, L/min, dB"
-                  required
-                />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Fréquence (secondes) *

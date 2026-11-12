@@ -1,4 +1,4 @@
-import { Eye, Image as ImageIcon, Trash2, ClipboardList } from 'lucide-react'
+import { Eye, Image as ImageIcon, Trash2, Pencil } from 'lucide-react'
 import Spinner from '../common/Spinner'
 import Alert from '../common/Alert'
 import { InspectionStatusBadge } from '../common/StatusBadge'
@@ -17,9 +17,11 @@ export default function InspectionHistoryTable({
   error = null,
   onView,
   onViewImage,
-  onViewResult,
   onDelete,
   canDelete = false,
+  onAnnotate,
+  onCompareBefore,
+  onCompareAfter,
 }) {
   if (loading) {
     return (
@@ -77,7 +79,7 @@ export default function InspectionHistoryTable({
                     {insp.utilisateur_nom || '—'}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    {insp.image ? (
+                    {insp.image && insp.media_type !== 'VIDEO' ? (
                       <button
                         type="button"
                         onClick={() => onViewImage?.(insp)}
@@ -85,9 +87,9 @@ export default function InspectionHistoryTable({
                         className="block"
                       >
                         <img
-                          src={insp.image}
+                          src={insp.image_annotee || insp.image}
                           alt={`Inspection ${insp.id}`}
-                          className="h-12 w-12 rounded-md object-cover border border-gray-200"
+                          className="sf-inspection-history-thumb"
                         />
                       </button>
                     ) : (
@@ -126,19 +128,16 @@ export default function InspectionHistoryTable({
                       type="button"
                       onClick={() => onViewImage?.(insp)}
                       title="Voir l'image"
-                      disabled={!insp.image}
+                      disabled={!insp.image || insp.media_type === 'VIDEO'}
                       className="text-gray-600 hover:text-gray-900 disabled:opacity-30"
                     >
                       <ImageIcon className="h-4 w-4 inline" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onViewResult?.(insp)}
-                      title="Voir le résultat"
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <ClipboardList className="h-4 w-4 inline" />
-                    </button>
+                    {onAnnotate && canDelete && insp.media_type !== 'VIDEO' && insp.image && <button type="button" onClick={() => onAnnotate(insp)} title="Annoter la photo" className="text-amber-500 hover:text-amber-700"><Pencil className="h-4 w-4 inline" /></button>}
+                    {onCompareBefore && onCompareAfter && insp.media_type !== 'VIDEO' && insp.image && <>
+                      <button type="button" onClick={() => onCompareBefore(insp)} title="Utiliser comme photo avant" className="sf-inspection-compare-action">Avant</button>
+                      <button type="button" onClick={() => onCompareAfter(insp)} title="Utiliser comme photo après" className="sf-inspection-compare-action">Après</button>
+                    </>}
                     {canDelete && (
                       <button
                         type="button"

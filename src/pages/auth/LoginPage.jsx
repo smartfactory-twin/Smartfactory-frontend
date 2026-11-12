@@ -36,7 +36,7 @@ export default function LoginPage() {
 
       if (result.mustReset) {
         // Affiche le popup forcé au lieu de rediriger
-        setForceReset({ uid: result.uid, token: result.token })
+        setForceReset({ uid: result.uid, token: result.token, email, mustUpdateProfile: result.mustUpdateProfile })
         return
       }
 
@@ -73,11 +73,13 @@ export default function LoginPage() {
         <ForceResetModal
           uid={forceReset.uid}
           token={forceReset.token}
+          initialEmail={forceReset.email}
+          showProfileFields={forceReset.mustUpdateProfile}
           onSuccess={handleResetSuccess}
         />
       )}
 
-      <AuthLayout>
+      <AuthLayout variant="login">
       <div className="space-y-2 mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Bienvenue</h1>
         <p className="text-gray-500">Connectez-vous à votre espace de supervision.</p>
@@ -90,7 +92,8 @@ export default function LoginPage() {
         <Input
           label="Adresse e-mail"
           type="email"
-          placeholder="s.laurent@smartfactory.fr"
+          placeholder="Saisissez votre adresse e-mail"
+          autoComplete="email"
           error={errors.email?.message}
           {...register('email', {
             required: 'L\'adresse e-mail est obligatoire.',

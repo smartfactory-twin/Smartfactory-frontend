@@ -55,12 +55,13 @@ export const passwordReset = async (email) => {
 /**
  * POST /auth/password-reset/confirm/
  */
-export const passwordResetConfirm = async (uid, token, new_password, new_password_confirm) => {
+export const passwordResetConfirm = async (uid, token, new_password, new_password_confirm, profile = {}) => {
   const { data } = await api.post('/auth/password-reset/confirm/', {
     uid,
     token,
     new_password,
     new_password_confirm,
+    ...profile,
   })
   return data
 }

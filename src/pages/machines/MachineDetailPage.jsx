@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, Trash2, MapPin, Calendar, Tag,
-  FileText, Package, Camera, Plus, X, Check, Maximize2,
+  FileText, Package, Camera, Plus, X, Check, Maximize2, Activity,
 } from 'lucide-react'
 import { useAuthContext } from '../../context/AuthContext'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TechnicianLayout from '../../components/layout/TechnicianLayout'
 import OperatorLayout from '../../components/layout/OperatorLayout'
 import { MachineStatusBadge } from '../../components/common/StatusBadge'
+import { InspectionStatusBadge } from '../../components/common/StatusBadge'
 import Spinner from '../../components/common/Spinner'
 import ImageLightbox from '../../components/common/ImageLightbox'
 import { getMachine, deleteMachine } from '../../services/machineService'
+import { getCapteurs, getReadings } from '../../services/sensorService'
 import { addMachineComposant, updateComposant, deleteComposant } from '../../services/equipementService'
+import { getInspections } from '../../services/inspectionService'
 
 function InfoRow({ label, value }) {
   return (
@@ -54,6 +57,30 @@ function ConfirmDeleteDialog({ nom, onConfirm, onCancel, loading }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function SensorReadingCard({ sensor, machineId, navigate }) {
+  const values = [...(sensor.readings || [])].reverse().map((reading) => Number(reading.valeur)).filter(Number.isFinite)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const line = values.map((value, index) => `${values.length > 1 ? (index / (values.length - 1)) * 100 : 50},${28 - ((value - min) / range) * 22}`).join(' ')
+  const latest = sensor.readings?.[0]
+  const outOfRange = latest?.hors_plage
+
+  return (
+    <button type="button" onClick={() => navigate(`/mesures?machine=${encodeURIComponent(machineId)}&capteur=${encodeURIComponent(sensor.id)}`)} className="sf-machine-sensor-card text-left">
+      <span className="flex items-start justify-between gap-2">
+        <span><b>{sensor.nom}</b><small>{sensor.identifiant} · {sensor.unite}</small></span>
+        <i className={outOfRange ? 'is-warning' : sensor.actif ? 'is-ok' : 'is-off'}>{outOfRange ? 'Hors seuil' : sensor.actif ? 'Actif' : 'Inactif'}</i>
+      </span>
+      <span className="sf-machine-sensor-reading">{latest ? `${latest.valeur} ${sensor.unite}` : 'Aucune lecture'}</span>
+      <span className="sf-machine-sensor-chart" aria-hidden="true">
+        {values.length > 1 ? <svg viewBox="0 0 100 32" preserveAspectRatio="none"><polyline points={line} /></svg> : <span>Historique indisponible</span>}
+      </span>
+      <small>Seuil : {sensor.seuil_min}–{sensor.seuil_max} {sensor.unite} <span>· ouvrir les mesures →</span></small>
+    </button>
   )
 }
 
@@ -221,6 +248,8 @@ export default function MachineDetailPage() {
   const role = user?.role
 
   const [machine, setMachine] = useState(null)
+  const [sensors, setSensors] = useState([])
+  const [inspections, setInspections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
   const [showDelete, setShowDelete] = useState(false)
@@ -236,6 +265,30 @@ export default function MachineDetailPage() {
         else setError('Erreur lors du chargement.')
       })
       .finally(() => setLoading(false))
+  }, [id])
+
+  useEffect(() => {
+    let active = true
+    getInspections({ machine: id, page_size: 6, ordering: '-date_inspection' })
+      .then((data) => { if (active) setInspections(data.results ?? data ?? []) })
+      .catch(() => { if (active) setInspections([]) })
+    return () => { active = false }
+  }, [id])
+
+  useEffect(() => {
+    let active = true
+    setSensors([])
+    getCapteurs({ machine: id, page_size: 30 }).then(async (data) => {
+      const items = data.results ?? data
+      const enriched = await Promise.all(items.map(async (sensor) => {
+        try {
+          const result = await getReadings({ sensor: sensor.id, ordering: '-timestamp', page_size: 24 })
+          return { ...sensor, readings: result.results ?? result }
+        } catch { return { ...sensor, readings: [] } }
+      }))
+      if (active) setSensors(enriched)
+    }).catch(() => { if (active) setSensors([]) })
+    return () => { active = false }
   }, [id])
 
   const handleDelete = async () => {
@@ -294,6 +347,10 @@ export default function MachineDetailPage() {
           </div>
         </div>
         <div className="flex gap-2 ml-10 sm:ml-0">
+          <button onClick={() => navigate(`/mesures?machine=${encodeURIComponent(id)}`)}
+            className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+            <Activity className="h-4 w-4" /> Courbes
+          </button>
           {(role === 'ADMIN' || role === 'TECHNICIEN') && (
             <button onClick={() => navigate(`/machines/${id}/edit`)}
               className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
@@ -317,6 +374,7 @@ export default function MachineDetailPage() {
             <InfoRow label="Nom" value={machine.nom} />
             <InfoRow label="Identifiant" value={machine.identifiant_interne} />
             <InfoRow label="N° Série" value={machine.numero_serie} />
+            <InfoRow label="Type" value={machine.type_equipement?.replaceAll('_', ' ')} />
             <InfoRow label="Marque" value={machine.marque} />
             <InfoRow label="Modèle" value={machine.modele} />
           </div>
@@ -357,7 +415,7 @@ export default function MachineDetailPage() {
           {machine.photo ? (
             <button
               type="button"
-              onClick={() => setShowPhoto(true)}
+              onClick={() => setShowPhoto(machine.photo)}
               title="Agrandir la photo"
               className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border border-gray-200"
             >
@@ -414,8 +472,21 @@ export default function MachineDetailPage() {
         />
       </div>
 
-      {showPhoto && machine.photo && (
-        <ImageLightbox src={machine.photo} alt={machine.nom} onClose={() => setShowPhoto(false)} />
+      <section className="sf-machine-sensors-section" aria-labelledby="machine-sensors-title">
+        <header><div><h2 id="machine-sensors-title">Derniers relevés des capteurs</h2><p>{sensors.length} capteur{sensors.length !== 1 ? 's' : ''} associé{sensors.length !== 1 ? 's' : ''} à cette machine</p></div></header>
+        {sensors.length ? <div className="sf-machine-sensors-grid">{sensors.map((sensor) => <SensorReadingCard key={sensor.id} sensor={sensor} machineId={id} navigate={navigate} />)}</div> : <p className="sf-machine-sensors-empty">Aucun capteur associé à cette machine.</p>}
+      </section>
+
+      <section className="sf-machine-inspection-section" aria-labelledby="machine-inspections-title">
+        <header><div><h2 id="machine-inspections-title">Photos et analyse Vision IA</h2><p>{inspections.length} inspection(s) récente(s) pour cette machine</p></div><button type="button" onClick={() => navigate(`/inspections?machine=${encodeURIComponent(id)}`)}>Ouvrir la galerie →</button></header>
+        {inspections.length ? <div className="sf-machine-inspection-grid">{inspections.slice(0, 4).map((inspection) => <article key={inspection.id} className="sf-machine-inspection-card">
+          {inspection.media_type === 'VIDEO' ? <video src={inspection.image} controls preload="metadata" /> : <button type="button" onClick={() => setShowPhoto(inspection.image_annotee || inspection.image)} aria-label={`Agrandir la photo de l'inspection ${inspection.id}`}><img src={inspection.image_annotee || inspection.image} alt={`Inspection ${inspection.id}`} /></button>}
+          <div><b>{inspection.defect_type || (inspection.statut_analyse === 'TERMINEE' ? 'Normal' : inspection.statut_analyse_label)}</b><span>{inspection.confidence != null ? `${Math.round(inspection.confidence * 100)} % de confiance` : inspection.observation || 'Analyse non disponible'}</span><small>{new Date(inspection.date_inspection).toLocaleString('fr-FR')}</small><InspectionStatusBadge status={inspection.statut_analyse} /></div>
+        </article>)}</div> : <p className="sf-machine-inspection-empty">Aucune photo ou analyse enregistrée pour cette machine.</p>}
+      </section>
+
+      {showPhoto && typeof showPhoto === 'string' && (
+        <ImageLightbox src={showPhoto} alt={machine.nom} onClose={() => setShowPhoto(false)} />
       )}
 
       {showDelete && (

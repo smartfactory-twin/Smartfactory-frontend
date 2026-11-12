@@ -33,7 +33,7 @@ export function AuthProvider({ children }) {
 
     // Cas forced reset (premier login admin-created)
     if (data.must_reset_password) {
-      return { mustReset: true, uid: data.uid, token: data.token }
+      return { mustReset: true, mustUpdateProfile: data.must_update_profile, uid: data.uid, token: data.token }
     }
 
     // Stocker les tokens

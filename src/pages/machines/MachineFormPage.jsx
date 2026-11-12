@@ -78,6 +78,7 @@ export default function MachineFormPage() {
           nom:                m.nom,
           identifiant_interne: m.identifiant_interne,
           numero_serie:       m.numero_serie ?? '',
+          type_equipement:    m.type_equipement ?? '',
           marque:             m.marque ?? '',
           modele:             m.modele ?? '',
           date_installation:  m.date_installation ?? '',
@@ -204,6 +205,16 @@ export default function MachineFormPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">N° de série</label>
                 <input {...register('numero_serie')} className="input-field" placeholder="Ex: SN-2024-001" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Type d’équipement</label>
+                <select {...register('type_equipement')} className="input-field">
+                  <option value="">— Sélectionner —</option>
+                  {[
+                    ['COMPRESSEUR', 'Compresseur'], ['POMPE', 'Pompe'], ['MOTEUR', 'Moteur'],
+                    ['CONVOYEUR', 'Convoyeur'], ['TURBINE', 'Turbine'], ['PRESSE', 'Presse'], ['AUTRE', 'Autre'],
+                  ].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Marque</label>

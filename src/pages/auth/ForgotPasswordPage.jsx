@@ -146,7 +146,7 @@ export default function ForgotPasswordPage() {
         <Input
           label="Adresse e-mail"
           type="email"
-          placeholder="s.laurent@smartfactory.fr"
+          placeholder="Email"
           error={errors.email?.message}
           {...register('email', {
             required: "L'adresse e-mail est obligatoire.",

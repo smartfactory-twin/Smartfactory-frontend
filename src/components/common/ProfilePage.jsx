@@ -165,7 +165,7 @@ function PersonalInfoSection({ user, onUpdated }) {
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 className={`input-field pl-9 text-sm ${errors.telephone ? 'input-error' : ''}`}
-                placeholder="+213 555 123 456"
+                placeholder="Téléphone"
                 {...register('telephone')}
               />
             </div>
@@ -467,10 +467,9 @@ export default function ProfilePage() {
         <p className="text-sm text-gray-500 mt-0.5">Gérez vos informations personnelles et votre sécurité.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 max-w-4xl">
+      <div className="grid w-full grid-cols-1 gap-5 xl:grid-cols-2">
         <PersonalInfoSection user={user} onUpdated={handleUpdated} />
         <ChangePasswordSection />
-        <MonPerimetreSection />
       </div>
     </div>
   )

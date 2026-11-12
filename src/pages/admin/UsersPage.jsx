@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import {
   UserPlus, Download, Upload, Search, X, Loader2,
   Eye, Trash2, Mail, Shield, Phone, Calendar,
-  AlertTriangle, CheckCircle, Pencil, Info, Plus, Building2,
+  AlertTriangle, CheckCircle, Pencil, Info, Building2,
 } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
 import Alert from '../../components/common/Alert'
@@ -11,12 +11,41 @@ import Button from '../../components/common/Button'
 import CsvImportUsersModal from '../../components/users/CsvImportUsersModal'
 import ScopeManager, { HierarchyPicker, selectionVersPayload } from '../../components/users/ScopeManager'
 import { adminCreateUser, listUsers, deleteUser, updateUserAdmin } from '../../services/authService'
+import { useAuthContext } from '../../context/AuthContext'
 
 const ROLE_LABELS = { ADMIN: 'Administrateur', TECHNICIEN: 'Technicien', OPERATEUR: 'Opérateur' }
 const ROLE_COLORS = {
   ADMIN:      'bg-purple-100 text-purple-700',
   TECHNICIEN: 'bg-blue-100   text-blue-700',
   OPERATEUR:  'bg-gray-100   text-gray-700',
+}
+
+function UserListAvatar({
+  user,
+  sizeClass = 'h-8 w-8',
+  shapeClass = 'rounded-full',
+  fallbackClass = 'bg-primary-100',
+  initialsClass = 'text-xs font-bold text-primary-700',
+}) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const initials = `${user.prenom?.[0] ?? ''}${user.nom?.[0] ?? ''}`.toUpperCase()
+
+  if (user.photo && !imageFailed) {
+    return (
+      <img
+        src={user.photo}
+        alt={`Photo de ${user.prenom} ${user.nom}`}
+        className={`${sizeClass} ${shapeClass} object-cover flex-shrink-0`}
+        onError={() => setImageFailed(true)}
+      />
+    )
+  }
+
+  return (
+    <div className={`${sizeClass} ${shapeClass} ${fallbackClass} flex items-center justify-center flex-shrink-0`} aria-hidden="true">
+      <span className={initialsClass}>{initials}</span>
+    </div>
+  )
 }
 
 const NIVEAU_LIBELLE = { usine: 'Usine', zone: 'Zone', ligne: 'Ligne', machine: 'Machine' }
@@ -28,77 +57,24 @@ const cleScope = (a) => `${a.usine ?? ''}|${a.zone ?? ''}|${a.ligne ?? ''}|${a.m
    transaction. Un seul `POST /auth/users/` — pas de seconde logique.       */
 
 function NewScopeList({ affectations, onChange }) {
-  const [adding, setAdding] = useState(false)
   const [draft, setDraft]   = useState({ niveau: 'ligne', usine: '', zone: '', ligne: '', machine: '' })
-  const [erreur, setErreur] = useState(null)
-
-  const reset = () => {
-    setDraft({ niveau: 'ligne', usine: '', zone: '', ligne: '', machine: '' })
-    setAdding(false); setErreur(null)
-  }
-
-  const ajouter = () => {
-    const payload = selectionVersPayload(draft)
-    if (!payload) { setErreur('Sélectionnez un élément à affecter.'); return }
-    if (affectations.some(a => cleScope(a) === cleScope(payload))) {
-      setErreur('Cette affectation existe déjà.')
-      return
-    }
-    onChange([...affectations, payload])
-    reset()
+  const choisirPerimetre = (next) => {
+    setDraft(next)
+    const payload = selectionVersPayload(next)
+    if (!payload) return
+    if (!affectations.some(a => cleScope(a) === cleScope(payload))) onChange([...affectations, payload])
   }
 
   return (
     <div className="space-y-3">
-      {erreur && <Alert type="error" message={erreur} />}
-
-      {affectations.length === 0 ? (
-        <div className="flex items-center gap-2 p-3 bg-gray-50 border border-dashed border-gray-200 rounded-lg">
-          <Info className="h-4 w-4 text-gray-400 flex-shrink-0" />
-          <p className="text-sm text-gray-500">Aucune affectation sélectionnée.</p>
-        </div>
-      ) : (
-        <ul className="space-y-2">
-          {affectations.map((a, i) => {
-            const niveau = a.ligne ? 'ligne' : a.zone ? 'zone' : a.usine ? 'usine' : 'machine'
-            const texte = `${NIVEAU_LIBELLE[niveau]} #${a[niveau]}`
-            return (
-              <li key={`${cleScope(a)}-${i}`} className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg">
-                <Building2 className="h-4 w-4 text-primary-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{texte}</p>
-                  <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary-50 text-primary-700">
-                    {NIVEAU_LIBELLE[niveau]}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onChange(affectations.filter((_, j) => j !== i))}
-                  title="Retirer"
-                  aria-label={`Retirer ${texte}`}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-
-      {adding ? (
-        <div className="p-3 border border-primary-200 bg-primary-50/30 rounded-lg space-y-3">
-          <HierarchyPicker value={draft} onChange={setDraft} idPrefix="new-scope" />
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={reset} type="button">Annuler</Button>
-            <Button size="sm" onClick={ajouter} type="button">Ajouter l’affectation</Button>
-          </div>
-        </div>
-      ) : (
-        <Button variant="secondary" size="sm" onClick={() => { setAdding(true); setErreur(null) }} type="button">
-          <Plus className="h-4 w-4" /> Ajouter une affectation
-        </Button>
-      )}
+      <HierarchyPicker value={draft} onChange={choisirPerimetre} idPrefix="new-scope" />
+      {affectations.length > 0 && <ul className="user-scope-chips" aria-label="Périmètres sélectionnés">
+        {affectations.map((a) => {
+          const niveau = a.ligne ? 'ligne' : a.zone ? 'zone' : a.usine ? 'usine' : 'machine'
+          const texte = `${NIVEAU_LIBELLE[niveau]} #${a[niveau]}`
+          return <li key={cleScope(a)}><Building2 aria-hidden="true" /><span>{texte}</span><button type="button" onClick={() => onChange(affectations.filter(item => cleScope(item) !== cleScope(a)))} aria-label={`Retirer ${texte}`}><Trash2 aria-hidden="true" /></button></li>
+        })}
+      </ul>}
     </div>
   )
 }
@@ -116,12 +92,12 @@ function AddUserModal({ onClose, onSuccess }) {
   const onSubmit = async (data) => {
     setLoading(true); setError(null)
     try {
-      await adminCreateUser({ ...data, perimetres })
-      onSuccess()
+      const result = await adminCreateUser({ ...data, perimetres })
+      onSuccess(result.email_sent !== false)
     } catch (err) {
       const d = err?.response?.data
       setError(
-        d?.email?.[0] ?? d?.detail
+        d?.email?.[0] ?? d?.detail ?? d?.error
         ?? (Array.isArray(d?.perimetres) ? d.perimetres[0] : null)
         ?? 'Erreur lors de la création.'
       )
@@ -131,31 +107,34 @@ function AddUserModal({ onClose, onSuccess }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 z-10 my-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Ajouter un utilisateur</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Un email avec ses identifiants lui sera envoyé.</p>
+      <div className="user-create-modal relative w-full max-w-2xl z-10 my-8">
+        <div className="user-create-header">
+          <div className="flex items-center gap-3">
+            <span className="user-create-icon"><UserPlus aria-hidden="true" /></span>
+            <div><h2 className="text-lg font-bold text-gray-900">Nouvel utilisateur</h2><p className="text-sm text-gray-500 mt-0.5">Le compte et ses accès seront configurés ici.</p></div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="h-5 w-5 text-gray-400" /></button>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100" aria-label="Fermer"><X className="h-5 w-5 text-gray-400" /></button>
         </div>
+        <div className="user-create-body">
         {error && <Alert type="error" message={error} dismissible className="mb-4" />}
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="user-create-form">
+          <section className="user-create-section">
+            <div className="user-create-section-heading"><h3>Informations personnelles</h3><p>Identité et accès à l’application.</p></div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="add-prenom" className="block text-sm font-medium text-gray-700 mb-1.5">Prénom</label>
-              <input id="add-prenom" className={`input-field text-sm ${errors.prenom ? 'input-error' : ''}`} placeholder="Ali" {...register('prenom', { required: 'Obligatoire' })} />
+              <input id="add-prenom" className={`input-field text-sm ${errors.prenom ? 'input-error' : ''}`} placeholder="Prénom" {...register('prenom', { required: 'Obligatoire' })} />
               {errors.prenom && <p className="mt-1 text-xs text-red-600">{errors.prenom.message}</p>}
             </div>
             <div>
               <label htmlFor="add-nom" className="block text-sm font-medium text-gray-700 mb-1.5">Nom</label>
-              <input id="add-nom" className={`input-field text-sm ${errors.nom ? 'input-error' : ''}`} placeholder="Benali" {...register('nom', { required: 'Obligatoire' })} />
+              <input id="add-nom" className={`input-field text-sm ${errors.nom ? 'input-error' : ''}`} placeholder="Nom" {...register('nom', { required: 'Obligatoire' })} />
               {errors.nom && <p className="mt-1 text-xs text-red-600">{errors.nom.message}</p>}
             </div>
           </div>
           <div>
             <label htmlFor="add-email" className="block text-sm font-medium text-gray-700 mb-1.5">Adresse e-mail</label>
-            <input id="add-email" type="email" className={`input-field text-sm ${errors.email ? 'input-error' : ''}`} placeholder="ali.benali@smartfactory.dz"
+            <input id="add-email" type="email" className={`input-field text-sm ${errors.email ? 'input-error' : ''}`} placeholder="Email"
               {...register('email', { required: 'Obligatoire.', pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Email invalide.' } })} />
             {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
           </div>
@@ -166,15 +145,16 @@ function AddUserModal({ onClose, onSuccess }) {
               <option value="TECHNICIEN">Technicien</option>
             </select>
           </div>
+          </section>
 
           {/* ── Affectation / Périmètre d'accès ── */}
-          <div className="border-t border-gray-100 pt-4 space-y-3">
+          <section className="user-create-section space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-gray-800">Affectation / Périmètre d'accès</h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {role === 'OPERATEUR'
                   ? "L'opérateur verra uniquement les machines des lignes affectées."
-                  : 'Le technicien peut cumuler plusieurs périmètres (usine, zone, ligne ou machine).'}
+                  : 'Sélectionnez un ou plusieurs périmètres accessibles (usine, zone, ligne ou machine).'}
               </p>
             </div>
             <NewScopeList affectations={perimetres} onChange={setPerimetres} />
@@ -184,19 +164,18 @@ function AddUserModal({ onClose, onSuccess }) {
                 message={`Sans affectation, cet ${role === 'OPERATEUR' ? 'opérateur' : 'technicien'} n'aura accès à aucune machine.`}
               />
             )}
-          </div>
+          </section>
 
-          <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-            <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-blue-700 leading-relaxed">
-              Un mot de passe temporaire sera généré et envoyé par email. L'utilisateur disposera de <strong>48 heures</strong> pour effectuer son premier login et définir son mot de passe. Le compte est inactif par défaut jusqu'à cette étape.
-            </p>
+          <div className="user-create-note">
+            <Info aria-hidden="true" />
+            <p>Un mot de passe temporaire sera envoyé automatiquement par e-mail. L’utilisateur devra le modifier lors de sa première connexion.</p>
           </div>
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" onClick={onClose} className="flex-1" type="button">Annuler</Button>
-            <Button type="submit" loading={loading} className="flex-1">Créer et envoyer l'email</Button>
+          <div className="user-create-footer">
+            <Button variant="secondary" onClick={onClose} type="button">Annuler</Button>
+            <Button type="submit" loading={loading}><UserPlus className="h-4 w-4" />Créer</Button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   )
@@ -206,7 +185,6 @@ function AddUserModal({ onClose, onSuccess }) {
 /* ── Modal Détails Utilisateur ─────────────────────────────────────── */
 function UserDetailModal({ user: u, onClose }) {
   if (!u) return null
-  const initials = `${u.prenom?.[0] ?? ''}${u.nom?.[0] ?? ''}`.toUpperCase()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -220,9 +198,14 @@ function UserDetailModal({ user: u, onClose }) {
 
         {/* Avatar + nom */}
         <div className="flex items-center gap-4 mb-6">
-          <div className="h-14 w-14 rounded-2xl bg-primary-600 flex items-center justify-center flex-shrink-0">
-            <span className="text-lg font-bold text-white">{initials}</span>
-          </div>
+          <UserListAvatar
+            key={`${u.id}-${u.photo ?? ''}`}
+            user={u}
+            sizeClass="h-14 w-14"
+            shapeClass="rounded-2xl"
+            fallbackClass="bg-primary-600"
+            initialsClass="text-lg font-bold text-white"
+          />
           <div>
             <p className="text-lg font-bold text-gray-900">{u.prenom} {u.nom}</p>
             <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -427,6 +410,7 @@ function DeleteConfirmModal({ user: u, onClose, onConfirm, loading }) {
 
 /* ── Page principale ───────────────────────────────────────────────── */
 export default function UsersPage() {
+  const { user: currentUser } = useAuthContext()
   const [users, setUsers]           = useState([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
@@ -443,20 +427,23 @@ export default function UsersPage() {
     setLoading(true); setError(null)
     try {
       const data = await listUsers({ search, ordering: '-date_joined' })
-      setUsers(data.results ?? data)
+      const rows = data.results ?? data
+      setUsers(rows.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email))
     } catch {
       setError('Erreur lors du chargement des utilisateurs.')
     } finally { setLoading(false) }
-  }, [search])
+  }, [search, currentUser?.id, currentUser?.email])
 
   useEffect(() => {
     const timer = setTimeout(() => fetchUsers(), 300)
     return () => clearTimeout(timer)
   }, [fetchUsers])
 
-  const handleAddSuccess = () => {
+  const handleAddSuccess = (emailSent = true) => {
     setShowAdd(false)
-    setSuccess('Utilisateur créé avec succès. Un email avec ses identifiants lui a été envoyé.')
+    setSuccess(emailSent
+      ? 'Utilisateur créé avec succès. Un email avec ses identifiants lui a été envoyé.'
+      : 'Utilisateur créé, mais l’e-mail n’a pas pu être envoyé. Vérifiez la configuration SMTP.')
     fetchUsers()
     setTimeout(() => setSuccess(null), 6000)
   }
@@ -534,7 +521,7 @@ export default function UsersPage() {
               <th className="text-left px-5 py-3.5 font-semibold text-gray-600">Email</th>
               <th className="text-left px-5 py-3.5 font-semibold text-gray-600">Rôle</th>
               <th className="text-left px-5 py-3.5 font-semibold text-gray-600">Statut</th>
-              <th className="text-left px-5 py-3.5 font-semibold text-gray-600">Actions</th>
+              <th className="w-32 px-5 py-3.5 text-center font-semibold text-gray-600">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -552,9 +539,7 @@ export default function UsersPage() {
                 <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-bold text-primary-700">{u.prenom?.[0]}{u.nom?.[0]}</span>
-                      </div>
+                      <UserListAvatar key={`${u.id}-${u.photo ?? ''}`} user={u} />
                       <span className="font-medium text-gray-900">{u.prenom} {u.nom}</span>
                     </div>
                   </td>
@@ -571,12 +556,12 @@ export default function UsersPage() {
                     </span>
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-center gap-1.5">
                       {/* Voir détails */}
                       <button
                         onClick={() => setDetailUser(u)}
                         title="Voir les détails"
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                        className="sf-action-icon sf-action-view p-1.5 rounded-lg text-gray-400"
                       >
                         <Eye className="h-4 w-4" />
                       </button>
@@ -584,7 +569,7 @@ export default function UsersPage() {
                       <button
                         onClick={() => setEditTarget(u)}
                         title="Modifier"
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        className="sf-action-icon sf-action-edit p-1.5 rounded-lg text-gray-400"
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
@@ -592,7 +577,7 @@ export default function UsersPage() {
                       <button
                         onClick={() => setDeleteTarget(u)}
                         title="Supprimer"
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        className="sf-action-icon sf-action-delete p-1.5 rounded-lg text-gray-400"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

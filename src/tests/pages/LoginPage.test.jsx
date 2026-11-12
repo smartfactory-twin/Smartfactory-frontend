@@ -31,7 +31,7 @@ function renderLoginPage(loginMock) {
 }
 
 // helpers — placeholders exacts du composant
-const getEmailInput    = () => screen.getByPlaceholderText('s.laurent@smartfactory.fr')
+const getEmailInput    = () => screen.getByPlaceholderText('email@smartfactory.com')
 const getPasswordInput = () => screen.getByPlaceholderText('••••••••')
 const getSubmitBtn     = () => screen.getByRole('button', { name: /se connecter/i })
 

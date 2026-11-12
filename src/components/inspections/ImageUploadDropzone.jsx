@@ -1,8 +1,7 @@
-import { useRef, useState } from 'react'
-import { UploadCloud, X, Image as ImageIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Camera, Image as ImageIcon, UploadCloud, X } from 'lucide-react'
 
-const ACCEPTED_TYPES = ['image/jpeg', 'image/jpg', 'image/png']
-const ACCEPTED_EXT = /\.(jpe?g|png)$/i
+const ACCEPTED_EXT = /\.(jpe?g|png|webp)$/i
 
 export function formatFileSize(bytes) {
   if (bytes == null) return ''
@@ -11,114 +10,118 @@ export function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} Mo`
 }
 
-/**
- * Zone d'import d'une image (sélecteur de fichier + glisser-déposer).
- * Valide le format (JPG/JPEG/PNG) et la taille (maxMb) côté client.
- */
 export default function ImageUploadDropzone({
-  file,
-  preview,
-  onFile,
-  onClear,
-  disabled = false,
-  maxMb = 5,
+  files = [], onFiles, onRemove, machineLabel, technicianName,
+  disabled = false, maxFiles = 10, maxMb = 20,
 }) {
   const inputRef = useRef(null)
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const [localError, setLocalError] = useState(null)
+  const [previews, setPreviews] = useState([])
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [cameraError, setCameraError] = useState('')
 
-  const accept = (candidate) => {
-    if (!candidate) return
-    const validType = ACCEPTED_TYPES.includes(candidate.type) ||
-      (!candidate.type && ACCEPTED_EXT.test(candidate.name))
-    if (!validType) {
-      setLocalError('Format non supporté. Utilisez une image JPG, JPEG ou PNG.')
+  useEffect(() => {
+    const next = files.map((file) => ({ file, url: URL.createObjectURL(file) }))
+    setPreviews(next)
+    return () => next.forEach(({ url }) => URL.revokeObjectURL(url))
+  }, [files])
+
+  useEffect(() => {
+    if (videoRef.current && streamRef.current) videoRef.current.srcObject = streamRef.current
+  }, [cameraOpen])
+
+  useEffect(() => () => streamRef.current?.getTracks().forEach((track) => track.stop()), [])
+
+  const acceptFiles = (candidates) => {
+    const incoming = Array.from(candidates || [])
+    if (!incoming.length) return
+    if (files.length + incoming.length > maxFiles) {
+      setLocalError(`Vous pouvez sélectionner ${maxFiles} fichiers maximum.`)
       return
     }
-    if (maxMb && candidate.size > maxMb * 1024 * 1024) {
-      setLocalError(`L'image ne doit pas dépasser ${maxMb} Mo.`)
+    const rejected = incoming.find((candidate) => {
+      const valid = ACCEPTED_EXT.test(candidate.name) && (
+        !candidate.type || ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(candidate.type)
+      )
+      return !valid || candidate.size > maxMb * 1024 * 1024
+    })
+    if (rejected) {
+      setLocalError(ACCEPTED_EXT.test(rejected.name)
+        ? `${rejected.name} dépasse ${maxMb} Mo ou son type MIME n'est pas accepté.`
+        : 'Formats acceptés : JPG, PNG et WEBP.')
       return
     }
     setLocalError(null)
-    onFile(candidate)
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    setDragging(false)
-    if (disabled) return
-    accept(e.dataTransfer?.files?.[0])
-  }
-
-  const handleClear = () => {
-    setLocalError(null)
+    onFiles?.(incoming)
     if (inputRef.current) inputRef.current.value = ''
-    onClear()
+  }
+
+  const closeCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    setCameraOpen(false)
+  }
+
+  const openCamera = async () => {
+    setCameraError('')
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('La caméra n’est pas disponible dans ce navigateur ou cette connexion.')
+      return
+    }
+    try {
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      setCameraOpen(true)
+    } catch {
+      setCameraError('Autorisez l’accès à la caméra dans le navigateur pour prendre une photo.')
+    }
+  }
+
+  const capture = () => {
+    const video = videoRef.current
+    if (!video?.videoWidth) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const context = canvas.getContext('2d')
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const stamp = `${machineLabel || 'Machine'}  ·  ${technicianName || 'Technicien'}  ·  ${new Date().toLocaleString('fr-FR')}`
+    const bandHeight = Math.max(46, Math.round(canvas.width * .055))
+    context.fillStyle = 'rgba(7, 12, 16, .78)'
+    context.fillRect(0, canvas.height - bandHeight, canvas.width, bandHeight)
+    context.fillStyle = '#ffffff'
+    context.font = `600 ${Math.max(14, Math.round(canvas.width * .019))}px sans-serif`
+    context.fillText(stamp.slice(0, 150), Math.round(canvas.width * .025), canvas.height - Math.round(bandHeight * .38), canvas.width * .95)
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const candidate = new File([blob], `inspection-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      if (files.length >= maxFiles) {
+        setLocalError(`La limite de ${maxFiles} fichiers est atteinte.`)
+        return
+      }
+      onFiles?.([candidate])
+      closeCamera()
+    }, 'image/jpeg', .92)
   }
 
   return (
-    <div className="space-y-3">
-      <p className="block text-sm font-medium text-gray-700">
-        Image à inspecter <span className="text-red-500">*</span>
-      </p>
-
-      {localError && (
-        <p role="alert" className="text-sm text-red-600">{localError}</p>
-      )}
-
-      {file && preview ? (
-        <div className="flex flex-col sm:flex-row gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <img
-            src={preview}
-            alt={file.name}
-            className="h-32 w-32 rounded-lg object-cover border border-gray-200 bg-white"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
-            <p className="text-xs text-gray-500 mt-1">{formatFileSize(file.size)}</p>
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={disabled}
-              className="mt-3 inline-flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
-            >
-              <X className="h-4 w-4" /> Retirer l'image
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div
-          onDragOver={(e) => { e.preventDefault(); if (!disabled) setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors
-            ${dragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 bg-white'}
-            ${disabled ? 'opacity-60' : 'cursor-pointer hover:border-primary-400'}`}
-          onClick={() => !disabled && inputRef.current?.click()}
-          data-testid="inspection-dropzone"
-        >
-          <UploadCloud className="h-10 w-10 text-gray-400" />
-          <p className="text-sm font-medium text-gray-700">
-            Glissez-déposez une image ici
-          </p>
-          <p className="text-xs text-gray-500">
-            ou cliquez pour parcourir (JPG, JPEG, PNG — max {maxMb} Mo)
-          </p>
-          <span className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-primary-600">
-            <ImageIcon className="h-3.5 w-3.5" /> Importer une image
-          </span>
-        </div>
-      )}
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/jpg,image/png,.jpg,.jpeg,.png"
-        className="hidden"
-        data-testid="inspection-file-input"
-        onChange={(e) => accept(e.target.files?.[0])}
-        disabled={disabled}
-      />
-    </div>
+    <section className="sf-inspection-upload">
+      <div className="sf-inspection-upload-heading"><div><b>Photos à inspecter</b><small>Une série peut contenir jusqu’à {maxFiles} photos · {maxMb} Mo par photo</small></div>
+        <div className="sf-inspection-upload-actions"><button type="button" onClick={() => inputRef.current?.click()} disabled={disabled}><UploadCloud />Ajouter des fichiers</button><button type="button" onClick={cameraOpen ? closeCamera : openCamera} disabled={disabled}><Camera />{cameraOpen ? 'Fermer la caméra' : 'Prendre une photo'}</button></div>
+      </div>
+      {localError && <p role="alert" className="sf-inspection-error">{localError}</p>}
+      {cameraError && <p role="alert" className="sf-inspection-error">{cameraError}</p>}
+      {cameraOpen && <div className="sf-camera-panel"><video ref={videoRef} autoPlay playsInline muted /><div><span>Étiquette intégrée : {machineLabel || 'machine'} · {technicianName || 'technicien'} · date et heure</span><button type="button" onClick={capture}>Capturer</button></div></div>}
+      <div onDragOver={(event) => { event.preventDefault(); if (!disabled) setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); if (!disabled) acceptFiles(event.dataTransfer?.files) }} onClick={() => !disabled && inputRef.current?.click()} className={`sf-inspection-dropzone${dragging ? ' is-dragging' : ''}${disabled ? ' is-disabled' : ''}`} data-testid="inspection-dropzone">
+        <UploadCloud aria-hidden="true" /><b>Glissez-déposez vos photos</b><span>ou cliquez pour parcourir · JPG, PNG, WEBP</span>
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple className="hidden" data-testid="inspection-file-input" onChange={(event) => acceptFiles(event.target.files)} disabled={disabled} />
+      {!!files.length && <div className="sf-inspection-file-grid">{files.map((file, index) => <article className="sf-inspection-file" key={`${file.name}-${file.lastModified}-${index}`}>
+        <div className="sf-inspection-file-preview"><img src={previews[index]?.url} alt="" /></div><div><b title={file.name}>{file.name}</b><small>Photo · {formatFileSize(file.size)}</small></div><button type="button" aria-label={`Retirer ${file.name}`} onClick={() => onRemove?.(index)} disabled={disabled}><X /></button>
+      </article>)}</div>}
+      <p className="sf-inspection-meta-note"><ImageIcon aria-hidden="true" /> Les photos prises dans l’application portent automatiquement l’identifiant machine, le technicien et l’horodatage.</p>
+    </section>
   )
 }

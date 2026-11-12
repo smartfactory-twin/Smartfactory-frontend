@@ -81,7 +81,7 @@ const NOTIFICATIONS = [
 
 function renderPage(role = 'ADMIN', initialPath = '/') {
   const ctxValue = {
-    user: { id: 1, email: 'admin@smartfactory.dz', role },
+    user: { id: 1, email: 'admin@smartfactory.com', role },
     isAuthenticated: true,
     isLoading: false,
     logout: vi.fn(),

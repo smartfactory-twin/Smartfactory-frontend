@@ -4,31 +4,37 @@ import { Eye, EyeOff, LockKeyhole, AlertTriangle } from 'lucide-react'
 import Button from './Button'
 import Alert from './Alert'
 import { passwordResetConfirm } from '../../services/authService'
-import { useNavigate } from 'react-router-dom'
 
 /**
  * Popup non-fermable qui force l'utilisateur à changer son mot de passe
  * lors du premier login (must_reset_password = true).
  * Props: uid, token, onSuccess (callback appelé après reset réussi)
  */
-export default function ForceResetModal({ uid, token, onSuccess }) {
+export default function ForceResetModal({ uid, token, initialEmail = '', showProfileFields = false, onSuccess }) {
   const [showNew,     setShowNew]     = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [loading,     setLoading]     = useState(false)
   const [error,       setError]       = useState(null)
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm()
+  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+    defaultValues: { email: initialEmail, nom: '', prenom: '' },
+  })
   const newPassword = watch('new_password')
 
-  const onSubmit = async ({ new_password, new_password_confirm }) => {
+  const onSubmit = async ({ nom, prenom, email, new_password, new_password_confirm }) => {
     setLoading(true)
     setError(null)
     try {
-      await passwordResetConfirm(uid, token, new_password, new_password_confirm)
+      const profile = showProfileFields ? { nom, prenom, email } : {}
+      await passwordResetConfirm(uid, token, new_password, new_password_confirm, profile)
       onSuccess()
     } catch (err) {
-      const msg = err.response?.data?.error
-        || err.response?.data?.new_password?.[0]
+      const data = err.response?.data || {}
+      const msg = data.error
+        || ['nom', 'prenom', 'email', 'new_password_confirm', 'new_password', 'uid', 'token']
+          .flatMap((field) => Array.isArray(data[field]) ? data[field] : [])
+          .find(Boolean)
+        || data.detail
         || 'Lien invalide ou expiré. Reconnectez-vous.'
       setError(msg)
     } finally {
@@ -42,16 +48,17 @@ export default function ForceResetModal({ uid, token, onSuccess }) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-7 z-10">
+      <div className="force-reset-card relative rounded-2xl shadow-2xl w-full max-w-md p-7 z-10">
         {/* Icône + Titre */}
         <div className="flex flex-col items-center text-center mb-6">
           <div className="h-14 w-14 rounded-2xl bg-navy-900/5 border border-navy-900/10 flex items-center justify-center mb-4">
             <LockKeyhole className="h-7 w-7 text-primary-600" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900">Changez votre mot de passe</h2>
+          <h2 className="text-xl font-bold text-gray-900">{showProfileFields ? 'Complétez votre compte' : 'Changez votre mot de passe'}</h2>
           <p className="text-sm text-gray-500 mt-2 max-w-xs">
-            Pour des raisons de sécurité, vous devez définir un nouveau mot de passe
-            avant d'accéder à l'application.
+            {showProfileFields
+              ? 'Vérifiez vos coordonnées et choisissez un nouveau mot de passe avant d’accéder à l’application.'
+              : 'Pour des raisons de sécurité, vous devez choisir un nouveau mot de passe avant d’accéder à l’application.'}
           </p>
         </div>
 
@@ -66,6 +73,25 @@ export default function ForceResetModal({ uid, token, onSuccess }) {
         {error && <Alert type="error" message={error} className="mb-4" />}
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+          {showProfileFields && <>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Prénom</label>
+              <input autoComplete="given-name" className={`input-field text-sm ${errors.prenom ? 'input-error' : ''}`} {...register('prenom', { required: 'Le prénom est obligatoire.' })} />
+              {errors.prenom && <p className="mt-1 text-xs text-red-600">{errors.prenom.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom</label>
+              <input autoComplete="family-name" className={`input-field text-sm ${errors.nom ? 'input-error' : ''}`} {...register('nom', { required: 'Le nom est obligatoire.' })} />
+              {errors.nom && <p className="mt-1 text-xs text-red-600">{errors.nom.message}</p>}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Adresse e-mail</label>
+            <input type="email" autoComplete="email" className={`input-field text-sm ${errors.email ? 'input-error' : ''}`} {...register('email', { required: 'L’adresse e-mail est obligatoire.', pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Adresse e-mail invalide.' } })} />
+            {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
+          </div>
+          </>}
           {/* Nouveau mot de passe */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -121,7 +147,7 @@ export default function ForceResetModal({ uid, token, onSuccess }) {
           </div>
 
           <Button type="submit" loading={loading} className="w-full mt-2" size="lg">
-            Confirmer le nouveau mot de passe
+            Enregistrer et continuer
           </Button>
         </form>
       </div>

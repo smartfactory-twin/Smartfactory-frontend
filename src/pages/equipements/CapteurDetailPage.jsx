@@ -84,15 +84,24 @@ export default function CapteurDetailPage() {
               <p className="text-sm text-gray-500 mt-1 font-mono">{capteur.identifiant}</p>
             </div>
           </div>
-          {role === 'ADMIN' && (
+          <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => navigate(`/capteurs/${id}/modifier`)}
-              className="btn-primary flex items-center gap-2"
+              onClick={() => navigate(`/mesures?machine=${encodeURIComponent(capteur.machine)}&capteur=${encodeURIComponent(id)}`)}
+              className="btn-secondary flex items-center gap-2"
             >
-              <Edit className="h-4 w-4" />
-              Modifier
+              <Activity className="h-4 w-4" />
+              Courbes et mesures
             </button>
-          )}
+            {role === 'ADMIN' && (
+              <button
+                onClick={() => navigate(`/capteurs/${id}/modifier`)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Modifier
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

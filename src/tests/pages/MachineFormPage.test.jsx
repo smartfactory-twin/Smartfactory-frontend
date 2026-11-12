@@ -32,7 +32,7 @@ const EXISTING_MACHINE = {
 
 function renderForm(route = '/machines/nouveau') {
   const ctxValue = {
-    user: { id: 1, email: 'admin@smartfactory.dz', role: 'ADMIN' },
+    user: { id: 1, email: 'admin@smartfactory.com', role: 'ADMIN' },
     isAuthenticated: true,
     isLoading: false,
     logout: vi.fn(),

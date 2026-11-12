@@ -34,6 +34,11 @@ import ReadingsImportPage  from '../pages/equipements/ReadingsImportPage'
 
 // Module 4 — Inspection visuelle par IA
 import InspectionsPage     from '../pages/inspections/InspectionsPage'
+import PredictiveMaintenancePage from '../pages/maintenance/PredictiveMaintenancePage'
+import WorkOrdersPage from '../pages/maintenance/WorkOrdersPage'
+import PredictionsIaPage from '../pages/ai/PredictionsIaPage'
+import RapportsPage from '../pages/rapports/RapportsPage'
+import VocalPage from '../pages/vocal/VocalPage'
 
 // Module 8 — Alertes & Notifications
 import AlertesPage         from '../pages/alertes/AlertesPage'
@@ -78,21 +83,26 @@ export default function AppRouter() {
           <Route path="/dashboard" element={<RoleRedirect />} />
         </Route>
 
-        {/* ── Équipements — hiérarchie (tous rôles authentifiés) ── */}
-        <Route element={<ProtectedRoute />}>
+        {/* ── Structure — administration et techniciens ── */}
+        <Route element={<ProtectedRoute roles={['ADMIN', 'TECHNICIEN']} />}>
           <Route path="/equipements"              element={<HierarchiePage />} />
           <Route path="/equipements/usines"       element={<UsinesPage />} />
           <Route path="/equipements/zones"        element={<ZonesPage />} />
           <Route path="/equipements/lignes"       element={<LignesPage />} />
         </Route>
 
-        {/* ── Module 3 — Capteurs & Données IoT (tous rôles authentifiés) ── */}
+        {/* ── Consultation des capteurs — tous les rôles ── */}
         <Route element={<ProtectedRoute />}>
           <Route path="/capteurs"                 element={<CapteursPage />} />
+          <Route path="/capteurs/:id"             element={<CapteurDetailPage />} />
+        </Route>
+
+        {/* ── Gestion et import des capteurs — admin/technicien ── */}
+        <Route element={<ProtectedRoute roles={['ADMIN', 'TECHNICIEN']} />}>
           <Route path="/capteurs/import-sensors"  element={<SensorsImportPage />} />
           <Route path="/capteurs/import-readings" element={<ReadingsImportPage />} />
           <Route path="/capteurs/nouveau"         element={<CapteurFormPage />} />
-          <Route path="/capteurs/:id"             element={<CapteurDetailPage />} />
+          <Route path="/mesures" element={<TechMesuresPage />} />
         </Route>
 
         {/* ── Capteurs création/édition (ADMIN uniquement) ── */}
@@ -100,17 +110,24 @@ export default function AppRouter() {
           <Route path="/capteurs/:id/modifier"    element={<CapteurFormPage />} />
         </Route>
 
-        {/* ── Machines (tous rôles authentifiés) ── */}
-        <Route element={<ProtectedRoute />}>
+        {/* ── Machines — administration et techniciens ── */}
+        <Route element={<ProtectedRoute roles={['ADMIN', 'TECHNICIEN']} />}>
           <Route path="/machines"     element={<MachinesListPage />} />
           <Route path="/machines/:id" element={<MachineDetailPage />} />
         </Route>
 
         {/* ── Module 4 — Inspection visuelle par IA (tous rôles authentifiés) ── */}
-        <Route element={<ProtectedRoute />}>
+        <Route element={<ProtectedRoute roles={['ADMIN', 'TECHNICIEN']} />}>
           <Route path="/inspections" element={<InspectionsPage />} />
+          <Route path="/maintenance-predictive" element={<PredictiveMaintenancePage />} />
+          <Route path="/predictions-ia" element={<PredictionsIaPage />} />
+          <Route path="/maintenance" element={<WorkOrdersPage />} />
+          <Route path="/rapports" element={<RapportsPage />} />
+        </Route>
+        <Route element={<ProtectedRoute />}>
           <Route path="/alertes" element={<AlertesPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/assistant-vocal" element={<VocalPage />} />
         </Route>
 
         {/* ── Machines création/édition (ADMIN + TECHNICIEN) ── */}
@@ -131,10 +148,8 @@ export default function AppRouter() {
         <Route element={<ProtectedRoute roles={['TECHNICIEN']} />}>
           <Route path="/technician/dashboard"
             element={<TechDashboardPage />} />
-          <Route path="/technician/machines"
-            element={<TechSection title="Mes machines" description="Liste des machines assignées." />} />
-          <Route path="/technician/sensors"
-            element={<TechSection title="Capteurs" description="Liste des capteurs de vos machines." />} />
+          <Route path="/technician/machines" element={<Navigate to="/machines" replace />} />
+          <Route path="/technician/sensors" element={<Navigate to="/capteurs" replace />} />
           <Route path="/technician/measures"
             element={<TechMesuresPage />} />
           <Route path="/technician/alerts" element={<AlertesPage />} />

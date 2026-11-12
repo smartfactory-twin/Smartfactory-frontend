@@ -44,9 +44,9 @@ export default function InspectionDetailModal({ inspection, onClose, onViewImage
         </div>
 
         <div className="p-5 space-y-4">
-          {inspection.image && (
+          {inspection.image && inspection.media_type !== 'VIDEO' && (
             <img
-              src={inspection.image}
+              src={inspection.image_annotee || inspection.image}
               alt={`Inspection ${inspection.id}`}
               onClick={() => onViewImage?.(inspection)}
               className="max-h-64 w-full cursor-zoom-in rounded-lg border border-gray-200 bg-gray-50 object-contain"

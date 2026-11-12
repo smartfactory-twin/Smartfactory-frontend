@@ -11,6 +11,11 @@ import Spinner from '../../components/common/Spinner'
 import CsvImportModal from '../../components/machines/CsvImportModal'
 import { getMachines, deleteMachine, getZones } from '../../services/machineService'
 
+const MACHINE_TYPES = [
+  ['COMPRESSEUR', 'Compresseur'], ['POMPE', 'Pompe'], ['MOTEUR', 'Moteur'],
+  ['CONVOYEUR', 'Convoyeur'], ['TURBINE', 'Turbine'], ['PRESSE', 'Presse'], ['AUTRE', 'Autre'],
+]
+
 function SkeletonRow() {
   return (
     <tr className="animate-pulse">
@@ -61,6 +66,7 @@ export default function MachinesListPage() {
   const [search, setSearch]         = useState('')
   const [searchDebounced, setDebounced] = useState('')
   const [filterStatut, setFilterStatut] = useState('')
+  const [filterType, setFilterType] = useState('')
   const [filterZone, setFilterZone] = useState('')
   const [page, setPage]             = useState(1)
   const [count, setCount]           = useState(0)
@@ -93,12 +99,13 @@ export default function MachinesListPage() {
     const params = { page }
     if (searchDebounced) params.search = searchDebounced
     if (filterStatut)    params.statut = filterStatut
+    if (filterType)      params.type_equipement = filterType
     if (filterZone)      params['ligne_production__zone'] = filterZone
     getMachines(params)
       .then(data => { setMachines(data.results ?? data); setCount(data.count ?? 0) })
       .catch(() => setError('Impossible de charger les machines.'))
       .finally(() => setLoading(false))
-  }, [page, searchDebounced, filterStatut, filterZone])
+  }, [page, searchDebounced, filterStatut, filterZone, filterType])
 
   useEffect(() => { fetchMachines() }, [fetchMachines])
 
@@ -115,17 +122,20 @@ export default function MachinesListPage() {
 
   const handleExport = () => {
     if (!machines.length) return
-    const headers = ['Nom', 'Identifiant', 'N° Série', 'Marque', 'Modèle', 'Statut', 'Zone', 'Ligne', 'Date installation']
+    const headers = ['Nom', 'Identifiant', 'N° Série', 'Type', 'Marque', 'Modèle', 'Statut', 'Zone', 'Ligne', 'Date installation', 'Dernière mesure', 'Unité']
     const rows = machines.map(m => [
       m.nom,
       m.identifiant_interne,
       m.numero_serie || '',
+      m.type_equipement || '',
       m.marque || '',
       m.modele || '',
       m.statut,
       m.zone_nom || '',
       m.ligne_production_nom || '',
       m.date_installation || '',
+      m.derniere_valeur ?? '',
+      m.derniere_unite || '',
     ])
     const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -136,8 +146,6 @@ export default function MachinesListPage() {
     a.click()
     URL.revokeObjectURL(url)
   }
-
-  const formatDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—'
 
   const Layout = role === 'ADMIN' ? AdminLayout : role === 'TECHNICIEN' ? TechnicianLayout : OperatorLayout
 
@@ -175,6 +183,11 @@ export default function MachinesListPage() {
         )}
       </div>
 
+      <nav className="sf-equipment-tabs" aria-label="Vues des équipements">
+        <button type="button" aria-current="page">Tableau des équipements</button>
+        <button type="button" onClick={() => navigate('/equipements')}>Hiérarchie d’actifs</button>
+      </nav>
+
       {/* Filtres */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
@@ -206,9 +219,13 @@ export default function MachinesListPage() {
           <option value="">Toutes les zones</option>
           {zones.map(z => <option key={z.id} value={z.id}>{z.nom}</option>)}
         </select>
-        {(filterStatut || filterZone || search) && (
+        <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1) }} className="px-3 py-2 text-sm border border-gray-200 rounded-lg">
+          <option value="">Tous les types</option>
+          {MACHINE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+        {(filterStatut || filterZone || filterType || search) && (
           <button
-            onClick={() => { setSearch(''); setFilterStatut(''); setFilterZone(''); setPage(1) }}
+            onClick={() => { setSearch(''); setFilterStatut(''); setFilterZone(''); setFilterType(''); setPage(1) }}
             className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
           >
             Réinitialiser
@@ -229,10 +246,10 @@ export default function MachinesListPage() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Machine</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">N° Série</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Zone / Ligne</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Installation</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dernier relevé</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -249,20 +266,20 @@ export default function MachinesListPage() {
                   <tr key={m.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-900">{m.nom}</p>
-                      <p className="text-xs text-gray-400">{m.identifiant_interne}</p>
+                      <p className="text-xs text-gray-400">{m.identifiant_interne}{m.numero_serie ? ` · ${m.numero_serie}` : ''}</p>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{m.numero_serie || '—'}</td>
                     <td className="px-4 py-3">
                       <p className="text-gray-700">{m.zone_nom ?? '—'}</p>
                       <p className="text-xs text-gray-400">{m.ligne_production_nom ?? '—'}</p>
                     </td>
+                    <td className="px-4 py-3 text-gray-600">{MACHINE_TYPES.find(([value]) => value === m.type_equipement)?.[1] || m.type_equipement || '—'}</td>
                     <td className="px-4 py-3"><MachineStatusBadge status={m.statut} /></td>
-                    <td className="px-4 py-3 text-gray-600">{formatDate(m.date_installation)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{m.derniere_valeur == null ? '—' : `${m.derniere_valeur} ${m.derniere_unite || ''}`}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => navigate(`/machines/${m.id}`)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50"
+                          className="sf-action-icon sf-action-view p-1.5 rounded-lg text-gray-400"
                           title="Voir"
                         >
                           <Eye className="h-4 w-4" />
@@ -270,7 +287,7 @@ export default function MachinesListPage() {
                         {(role === 'ADMIN' || role === 'TECHNICIEN') && (
                           <button
                             onClick={() => navigate(`/machines/${m.id}/edit`)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                            className="sf-action-icon sf-action-edit p-1.5 rounded-lg text-gray-400"
                             title="Modifier"
                           >
                             <Pencil className="h-4 w-4" />
@@ -279,7 +296,7 @@ export default function MachinesListPage() {
                         {role === 'ADMIN' && (
                           <button
                             onClick={() => setDeleteTarget(m)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
+                            className="sf-action-icon sf-action-delete p-1.5 rounded-lg text-gray-400"
                             title="Supprimer"
                           >
                             <Trash2 className="h-4 w-4" />
