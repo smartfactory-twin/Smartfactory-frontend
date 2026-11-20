@@ -19,6 +19,10 @@ pnpm-debug.log*
 
 # Tests / couverture
 coverage/
+playwright-report/
+playwright-live-report/
+test-results/
+npm-audit-offline.json
 
 # Éditeurs
 .DS_Store

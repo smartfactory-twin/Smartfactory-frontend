@@ -4,9 +4,9 @@ import { Link, useLocation } from 'react-router-dom'
 import { getNotificationCount } from '../../services/notificationService'
 
 const notificationRoutes = {
-  ADMIN: '/notifications',
-  TECHNICIEN: '/technician/notifications',
-  OPERATEUR: '/operator/notifications',
+  ADMIN: '/alertes',
+  TECHNICIEN: '/technician/alerts',
+  OPERATEUR: '/operator/alerts',
 }
 
 export default function NotificationBell({ role }) {
@@ -51,14 +51,11 @@ export default function NotificationBell({ role }) {
       aria-label={loadError
         ? 'Notifications, compteur indisponible'
         : `Notifications${unreadCount ? `, ${unreadCount} non lue${unreadCount > 1 ? 's' : ''}` : ''}`}
-      className="relative rounded-lg p-2 transition-colors hover:bg-gray-100"
+      className="sf-top-notification-link"
     >
-      <Bell className="h-5 w-5 text-gray-500" />
+      <Bell aria-hidden="true" />
       {unreadCount > 0 && (
-        <span
-          aria-hidden="true"
-          className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-600"
-        />
+        <span className="sf-top-count" aria-hidden="true">{unreadCount > 99 ? '99+' : unreadCount}</span>
       )}
     </Link>
   )

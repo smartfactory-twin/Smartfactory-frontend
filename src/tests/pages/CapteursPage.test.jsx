@@ -152,13 +152,13 @@ describe('CapteursPage — Module 3 (UC-08)', () => {
     expect(screen.getByRole('button', { name: /importer des mesures/i })).toBeInTheDocument()
   })
 
-  it('masque les boutons d\'ajout et d\'import pour le technicien', async () => {
+  it('autorise le technicien à ajouter et importer des capteurs dans son périmètre', async () => {
     renderPage('TECHNICIEN')
     await screen.findByText('Température Ligne A')
 
-    expect(screen.queryByRole('button', { name: /ajouter un capteur/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /importer des capteurs/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /importer des mesures/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /ajouter un capteur/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /importer des capteurs/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /importer des mesures/i })).toBeInTheDocument()
   })
 
   it('supprime un capteur après confirmation (administrateur)', async () => {

@@ -470,6 +470,7 @@ export default function ProfilePage() {
       <div className="grid w-full grid-cols-1 gap-5 xl:grid-cols-2">
         <PersonalInfoSection user={user} onUpdated={handleUpdated} />
         <ChangePasswordSection />
+        <MonPerimetreSection />
       </div>
     </div>
   )

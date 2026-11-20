@@ -9,6 +9,8 @@ import Alert from '../../components/common/Alert'
 import { useAuthContext } from '../../context/AuthContext'
 import { getCapteurs, deleteCapteur } from '../../services/sensorService'
 import { getMachines } from '../../services/machineService'
+import SensorAiEligibilityBadge from '../../components/equipements/SensorAiEligibilityBadge'
+import { formatNullableThreshold } from '../../utils/sensorDisplay'
 
 export default function CapteursPage() {
   const { user } = useAuthContext()
@@ -23,6 +25,7 @@ export default function CapteursPage() {
   const [filterMachine, setFilterMachine] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterAiEligible, setFilterAiEligible] = useState('')
 
   const fetchData = async () => {
     setLoading(true)
@@ -62,7 +65,8 @@ export default function CapteursPage() {
     const matchesMachine = !filterMachine || c.machine === parseInt(filterMachine)
     const matchesType = !filterType || c.type_capteur === filterType
     const matchesStatus = !filterStatus || String(c.actif) === filterStatus
-    return matchesSearch && matchesMachine && matchesType && matchesStatus
+    const matchesAi = !filterAiEligible || String(Boolean(c.is_ai_eligible)) === filterAiEligible
+    return matchesSearch && matchesMachine && matchesType && matchesStatus && matchesAi
   })
 
   const sensorTypes = [
@@ -163,6 +167,9 @@ export default function CapteursPage() {
                 <option value="true">Actif</option>
                 <option value="false">Inactif</option>
               </select>
+              <select aria-label="Filtrer par éligibilité IA" value={filterAiEligible} onChange={(e) => setFilterAiEligible(e.target.value)} className="input-field">
+                <option value="">Tous les capteurs IA</option><option value="true">Éligibles IA</option><option value="false">Non éligibles IA</option>
+              </select>
             </div>
           </div>
         </div>
@@ -183,6 +190,7 @@ export default function CapteursPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fréquence</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Seuils</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profil IA</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -208,8 +216,9 @@ export default function CapteursPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.unite}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.frequence_mesure}s</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {c.seuil_min} / {c.seuil_max} {c.unite}
+                        {formatNullableThreshold(c.seuil_min)} / {formatNullableThreshold(c.seuil_max)} {c.unite}
                       </td>
+                      <td className="px-6 py-4 text-sm"><div className="flex flex-col items-start gap-1"><span className="rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-xs">{c.sensor_role || 'other'}</span><span className="rounded-full bg-amber-50 text-amber-800 px-2 py-0.5 text-xs">{c.criticality || 'medium'}</span><SensorAiEligibilityBadge sensor={c} /></div></td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           c.actif ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'

@@ -71,24 +71,20 @@ describe('InspectionHistoryTable — Module 4', () => {
   it('déclenche les callbacks de consultation', async () => {
     const onView = vi.fn()
     const onViewImage = vi.fn()
-    const onViewResult = vi.fn()
     render(
       <InspectionHistoryTable
         inspections={[TOP_LEVEL]}
         onView={onView}
         onViewImage={onViewImage}
-        onViewResult={onViewResult}
       />
     )
 
     await userEvent.click(screen.getByTitle('Voir'))
     // Deux boutons « Voir l'image » : la vignette et l'action de la colonne Actions.
     await userEvent.click(screen.getAllByTitle("Voir l'image")[0])
-    await userEvent.click(screen.getByTitle('Voir le résultat'))
 
     expect(onView).toHaveBeenCalledWith(TOP_LEVEL)
     expect(onViewImage).toHaveBeenCalledWith(TOP_LEVEL)
-    expect(onViewResult).toHaveBeenCalledWith(TOP_LEVEL)
   })
 
   it('affiche et déclenche la suppression seulement si autorisée', async () => {

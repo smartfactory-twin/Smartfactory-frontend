@@ -31,7 +31,7 @@ function renderLoginPage(loginMock) {
 }
 
 // helpers — placeholders exacts du composant
-const getEmailInput    = () => screen.getByPlaceholderText('email@smartfactory.com')
+const getEmailInput    = () => screen.getByPlaceholderText('Saisissez votre adresse e-mail')
 const getPasswordInput = () => screen.getByPlaceholderText('••••••••')
 const getSubmitBtn     = () => screen.getByRole('button', { name: /se connecter/i })
 
@@ -118,7 +118,7 @@ describe('LoginPage', () => {
     })
   })
 
-  it('affiche le ForceResetModal si must_reset_password=true', async () => {
+  it('affiche le ForceResetModal si un reset obligatoire est explicitement renvoyé', async () => {
     const loginMock = vi.fn().mockResolvedValueOnce({ mustReset: true, uid: 'abc', token: 'xyz' })
     renderLoginPage(loginMock)
     await userEvent.type(getEmailInput(), 'new@test.com')
@@ -129,7 +129,7 @@ describe('LoginPage', () => {
     })
   })
 
-  it('ne navigue pas si must_reset_password=true', async () => {
+  it('ne navigue pas tant que le reset obligatoire n’est pas terminé', async () => {
     const loginMock = vi.fn().mockResolvedValueOnce({ mustReset: true, uid: 'abc', token: 'xyz' })
     renderLoginPage(loginMock)
     await userEvent.type(getEmailInput(), 'new@test.com')

@@ -17,7 +17,7 @@ describe('NotificationBell', () => {
       <MemoryRouter initialEntries={['/']}>
         <NotificationBell role="TECHNICIEN" />
         <Routes>
-          <Route path="/technician/notifications" element={<p>Notifications page</p>} />
+          <Route path="/technician/alerts" element={<p>Alertes du technicien</p>} />
         </Routes>
       </MemoryRouter>
     )
@@ -26,6 +26,6 @@ describe('NotificationBell', () => {
     expect(bell.querySelector('[aria-hidden="true"]')).toBeInTheDocument()
 
     await userEvent.click(bell)
-    expect(await screen.findByText('Notifications page')).toBeInTheDocument()
+    expect(await screen.findByText('Alertes du technicien')).toBeInTheDocument()
   })
 })

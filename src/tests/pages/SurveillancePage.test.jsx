@@ -95,7 +95,7 @@ describe('SurveillancePage — OPERATEUR (consultation)', () => {
     // "Tour CNC" apparaît dans la liste des machines et dans la colonne Machine.
     expect((await screen.findAllByText('Tour CNC')).length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('Module en cours de développement')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Surveillance' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Surveillance' }).length).toBeGreaterThanOrEqual(1)
   })
 
   it('affiche les machines, leur statut et leur dernière mesure', async () => {

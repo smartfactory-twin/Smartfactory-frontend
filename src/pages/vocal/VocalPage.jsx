@@ -1,17 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Mic, Send, Volume2, MessageSquare, Shield, Info } from 'lucide-react'
+import { Mic, Send, Volume2, MessageSquare, Shield, Info, Check, X } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TechnicianLayout from '../../components/layout/TechnicianLayout'
 import OperatorLayout from '../../components/layout/OperatorLayout'
 import { useAuthContext } from '../../context/AuthContext'
+import { getMachines } from '../../services/machineService'
+import { getCapteurs, getReadings } from '../../services/sensorService'
+import { acknowledgeAlert, getAlerts } from '../../services/alertService'
+import { createWorkOrder, getWorkOrder, submitReport, updateWorkOrderStatus } from '../../services/workOrderService'
+import { getVoiceCommandHistory, saveVoiceCommand } from '../../services/voiceService'
+import { formatNullableThreshold } from '../../utils/sensorDisplay'
 
 const PIPELINE_STEPS = [
-  { num: 1, label: 'Capture' },
-  { num: 2, label: 'VAD + bruit' },
-  { num: 3, label: 'ASR Whisper' },
-  { num: 4, label: 'NLU CamemBERT' },
-  { num: 5, label: 'Dialogue' },
-  { num: 6, label: 'TTS' },
+  { num: 1, label: 'Micro / texte' },
+  { num: 2, label: 'Reconnaissance navigateur' },
+  { num: 3, label: 'Intentions par règles' },
+  { num: 4, label: 'Données et rôles' },
+  { num: 5, label: 'Confirmation' },
+  { num: 6, label: 'Synthèse navigateur' },
 ]
 
 const EXAMPLES = [
@@ -33,16 +39,17 @@ const ROLE_LABELS = {
 }
 
 const ROLE_PERMISSIONS = {
-  ADMIN: 'Accès complet : lecture, acquittement, création d\'OT, dictée de rapport.',
-  TECHNICIEN: 'Lecture machines/alertes, acquittement, création d\'OT, dictée de rapport.',
-  OPERATEUR: 'Lecture machines/alertes uniquement. Actions restreintes.',
+  ADMIN: 'Lecture, acquittement, ordres de travail, rapports et validation.',
+  TECHNICIEN: 'Lecture, acquittement, création et traitement des ordres de travail, rapports.',
+  OPERATEUR: 'Lecture et acquittement des alertes. Pas de création ou modification des OT.',
 }
 
 // ─── NLU: client-side intent matching ────────────────────────────────
 
 function extractMachine(text) {
-  const m = text.match(/\bM(\d+)\b/i) || text.match(/machine\s+(\d+)/i)
-  return m ? `M${m[1]}` : null
+  const m = text.match(/\b([A-Z]{2,}[A-Z0-9]*[-_]\d+)\b/i) || text.match(/\bM(\d+)\b/i) || text.match(/machine\s+(\d+)/i)
+  if (!m) return null
+  return m[1]?.toUpperCase().startsWith('M') && /^\d+$/.test(m[1]) ? `M${m[1]}` : (m[1] || `M${m[2]}`).toUpperCase()
 }
 
 function extractAlertId(text) {
@@ -125,6 +132,17 @@ function nlu(text) {
     return { intent: 'dictate_report', params: { otId: extractOtId(t) } }
   }
 
+  const statusMatch = t.match(/(?:passe|mettre|change|changer|avance)\s+(?:l['']?\s*)?(?:ot|ordre\s+de\s+travail)\s*(?:n[°o]?\s*)?(\d+).*?(assign[ée]|en cours|en attente(?: de)? pi[èe]ces|rapport d[ée]pos[ée]|valid[ée]|cl[ôo]tur[ée])/i)
+  if (statusMatch) {
+    const statusMap = {
+      'assigné': 'Assigné', 'assigne': 'Assigné', 'en cours': 'En cours',
+      'en attente pièces': 'En attente pièces', 'en attente de pièces': 'En attente pièces',
+      'rapport déposé': 'Rapport déposé', 'rapport depose': 'Rapport déposé',
+      'validé': 'Validé', 'valide': 'Validé', 'clôturé': 'Clôturé', 'cloture': 'Clôturé',
+    }
+    return { intent: 'set_work_order_status', params: { otId: statusMatch[1], status: statusMap[statusMatch[2].toLocaleLowerCase('fr')] } }
+  }
+
   // get_rul
   if (/rul|combien\s+(?:d['']?\s*)?heures|combien\s+(?:d['']?\s*)?cycles|dur[ée]e\s+de\s+vie|avant\s+la\s+panne/i.test(t)) {
     return { intent: 'get_rul', params: { machine: extractMachine(t) } }
@@ -149,38 +167,50 @@ function nlu(text) {
   return { intent: 'unknown', params: {} }
 }
 
-// ─── Response generation (simulated data) ────────────────────────────
+async function findMachine(reference) {
+  if (!reference) return null
+  const response = await getMachines({ page_size: 200 })
+  const machines = response.results ?? response ?? []
+  const query = reference.trim().toLocaleLowerCase('fr')
+  return machines.find((machine) => [machine.identifiant_interne, machine.nom]
+    .some((value) => value?.toLocaleLowerCase('fr') === query || value?.toLocaleLowerCase('fr').includes(query))) || null
+}
 
-function generateResponse(intent, params) {
+function listFromResponse(response) {
+  return response.results ?? response ?? []
+}
+
+// Intentions de consultation en direct.
+
+async function generateResponse(intent, params) {
   switch (intent) {
     case 'get_machine_status': {
-      const m = params.machine || 'M??'
-      const states = ['EN MARCHE', 'ARRÊT PLANIFIÉ', 'MAINTENANCE', 'ALERTE']
-      const state = states[Math.floor(Math.random() * states.length)]
-      return `La machine ${m} est actuellement en état « ${state} ». Température moteur : ${(45 + Math.random() * 30).toFixed(1)} °C, vibration : ${(0.5 + Math.random() * 3).toFixed(2)} mm/s.`
+      if (!params.machine) return 'Précisez la machine, par exemple : « Quel est l’état de la machine POMPE-001 ? ».'
+      const machine = await findMachine(params.machine)
+      if (!machine) return `Je ne trouve pas la machine ${params.machine} dans votre périmètre.`
+      const state = machine.statut_label || machine.statut || 'inconnu'
+      return `${machine.nom} (${machine.identifiant_interne}) est actuellement au statut « ${state} ».`
     }
     case 'get_rul': {
-      const m = params.machine || 'M??'
-      const hours = Math.floor(200 + Math.random() * 2000)
-      return `Durée de vie résiduelle estimée de ${m} : ${hours} heures (≈ ${Math.floor(hours / 24)} jours). Prochain entretien recommandé dans ${Math.floor(hours * 0.7)} heures.`
+      return `Je ne peux pas donner de RUL fiable pour ${params.machine || 'cette machine'} : le modèle disponible utilise des cycles de turbofan C-MAPSS, qui ne correspondent pas à ses capteurs. Aucune durée n’est simulée.`
     }
     case 'get_sensor_value': {
-      const m = params.machine || 'M??'
-      const s = params.sensor || 'capteur'
-      const units = { température: '°C', vibration: 'mm/s', pression: 'bar', courant: 'A', vitesse: 'RPM', débit: 'L/min', bruit: 'dB' }
-      const val = (10 + Math.random() * 90).toFixed(1)
-      return `${s.charAt(0).toUpperCase() + s.slice(1)} actuelle de ${m} : ${val} ${units[s] || ''}. Seuil d'alerte : ${(parseFloat(val) * 1.3).toFixed(1)} ${units[s] || ''}.`
+      if (!params.machine) return 'Précisez la machine pour lire un capteur.'
+      const machine = await findMachine(params.machine)
+      if (!machine) return `Je ne trouve pas la machine ${params.machine} dans votre périmètre.`
+      const sensors = listFromResponse(await getCapteurs({ machine: machine.id, page_size: 200 }))
+      const sensor = sensors.find((item) => `${item.nom} ${item.type_capteur}`.toLocaleLowerCase('fr').includes(params.sensor))
+      if (!sensor) return `Aucun capteur ${params.sensor} trouvé sur ${machine.nom}.`
+      const readings = listFromResponse(await getReadings({ sensor: sensor.id, page_size: 1, ordering: '-timestamp' }))
+      const reading = readings[0]
+      if (!reading) return `Le capteur ${sensor.nom} n’a encore aucune mesure enregistrée.`
+      return `Dernière mesure de ${sensor.nom} sur ${machine.nom} : ${reading.valeur ?? reading.value} ${sensor.unite}, le ${new Date(reading.timestamp).toLocaleString('fr-FR')}. Seuil : ${formatNullableThreshold(sensor.seuil_min)} à ${formatNullableThreshold(sensor.seuil_max)} ${sensor.unite}.`
     }
     case 'list_alerts': {
-      const level = params.level ? ` de niveau « ${params.level} »` : ''
-      const count = Math.floor(1 + Math.random() * 8)
-      const details = []
-      for (let i = 0; i < Math.min(count, 3); i++) {
-        const id = Math.floor(200 + Math.random() * 100)
-        const machines = ['M17', 'M18', 'M20', 'M21', 'M22']
-        details.push(`#${id} ${machines[i]} — surchauffe détectée`)
-      }
-      return `${count} alerte(s) active(s)${level}. Exemples : ${details.join(' ; ')}.`
+      const response = await getAlerts({ statut: 'ACTIVE', ordering: '-date_declenchement', page_size: 5, ...(params.level ? { niveau: params.level.toUpperCase() } : {}) })
+      const alerts = listFromResponse(response)
+      if (!alerts.length) return 'Aucune alerte active correspondant à votre demande.'
+      return `${alerts.length} alerte(s) active(s). ${alerts.map((alert) => `${alert.reference || `#${alert.id}`} : ${alert.machine_nom || alert.machine} — ${alert.message}`).join(' ; ')}`
     }
     case 'ack_alert': {
       return `confirm:Voulez-vous acquitter l'alerte #${params.alertId || '???'}${params.comment ? ` avec le commentaire « ${params.comment} »` : ''} ? Dites « oui » pour confirmer ou « non » pour annuler.`
@@ -192,6 +222,8 @@ function generateResponse(intent, params) {
     case 'dictate_report': {
       return `confirm:Démarrer la dictée du rapport pour l'OT #${params.otId || '???'} ? Dites « oui » pour commencer ou « non » pour annuler.`
     }
+    case 'set_work_order_status':
+      return `confirm:Passer l'OT #${params.otId} au statut « ${params.status} » ? Dites « oui » pour confirmer ou « non » pour annuler.`
     case 'yes':
       return 'yes'
     case 'no':
@@ -227,7 +259,10 @@ export default function VocalPage() {
   const [activeStep, setActiveStep] = useState(-1)
   const [isProcessing, setIsProcessing] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
+  const [reportDraft, setReportDraft] = useState(null)
+  const [reportSaving, setReportSaving] = useState(false)
   const [commandHistory, setCommandHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [micAvailable, setMicAvailable] = useState(null)
 
   const chatRef = useRef(null)
@@ -242,6 +277,23 @@ export default function VocalPage() {
     } else {
       setMicAvailable(false)
     }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    getVoiceCommandHistory()
+      .then((entries) => {
+        if (!cancelled) setCommandHistory(entries.map((entry) => ({
+          id: entry.id, time: entry.created_at, text: entry.texte,
+          intent: entry.intention || '—', confidence: entry.confiance ?? 0,
+          result: entry.resultat || '—', utilisateur: entry.utilisateur,
+        })))
+      })
+      .catch(() => {
+        if (!cancelled) setMessages((prev) => [...prev, { role: 'assistant', text: 'Le journal serveur est temporairement indisponible. Les commandes continueront, mais leur historique ne pourra pas être synchronisé.', time: new Date() }])
+      })
+      .finally(() => { if (!cancelled) setHistoryLoading(false) })
+    return () => { cancelled = true }
   }, [])
 
   // ─── Auto-scroll chat ───────────────────────────────────────────
@@ -262,6 +314,20 @@ export default function VocalPage() {
     utterance.pitch = 1.0
     window.speechSynthesis.speak(utterance)
   }, [ttsEnabled])
+
+  const recordCommand = useCallback(async ({ text, intent, confidence, result }) => {
+    const entry = { time: new Date(), text, intent, confidence, result }
+    setCommandHistory((prev) => [entry, ...prev])
+    try {
+      const saved = await saveVoiceCommand({
+        texte: text.slice(0, 1000), intention: intent.slice(0, 80), confiance,
+        resultat: result.slice(0, 1000),
+      })
+      setCommandHistory((prev) => prev.map((item) => item === entry ? { ...item, id: saved.id, time: saved.created_at, utilisateur: saved.utilisateur } : item))
+    } catch {
+      // L’historique local reste visible si l’API est indisponible.
+    }
+  }, [])
 
   // ─── Pipeline animation ─────────────────────────────────────────
   const animatePipeline = useCallback(() => {
@@ -305,13 +371,26 @@ export default function VocalPage() {
       }
       setMessages((prev) => [...prev, lowConfMsg])
       speak(lowConfMsg.text)
-      setCommandHistory((prev) => [{
-        time: new Date(),
-        text: text.trim(),
-        intent: '—',
-        confidence,
-        result: 'Reformulation demandée',
-      }, ...prev])
+      await recordCommand({ text: text.trim(), intent: '—', confidence, result: 'Reformulation demandée' })
+      setIsProcessing(false)
+      return
+    }
+
+    if (reportDraft?.listening && !/terminer la dict[ée]e|fin de dict[ée]e/i.test(text)) {
+      setReportDraft((current) => ({ ...current, travaux: `${current.travaux} ${text.trim()}`.trim() }))
+      const response = 'Texte ajouté au brouillon du rapport. Vous pouvez continuer à dicter ou terminer la dictée.'
+      setMessages((prev) => [...prev, { role: 'assistant', text: response, time: new Date() }])
+      speak(response)
+      await recordCommand({ text: text.trim(), intent: 'dictate_report', confidence, result: 'Ajouté au brouillon' })
+      setIsProcessing(false)
+      return
+    }
+    if (reportDraft?.listening && /terminer la dict[ée]e|fin de dict[ée]e/i.test(text)) {
+      setReportDraft((current) => ({ ...current, listening: false }))
+      const response = 'Dictée terminée. Relisez le rapport, complétez la durée et le signataire, puis enregistrez-le.'
+      setMessages((prev) => [...prev, { role: 'assistant', text: response, time: new Date() }])
+      speak(response)
+      await recordCommand({ text: text.trim(), intent: 'dictate_report', confidence, result: 'Dictée terminée' })
       setIsProcessing(false)
       return
     }
@@ -321,20 +400,49 @@ export default function VocalPage() {
 
     // Handle yes/no for pending actions
     if (intent === 'yes' && pendingAction) {
-      const confirmMsg = {
-        role: 'assistant',
-        text: `Action confirmée. ${pendingAction.description} — exécution en cours…`,
-        time: new Date(),
+      let response = ''
+      try {
+        const { intent: action, params } = pendingAction
+        if (action === 'ack_alert') {
+          if (!params.alertId || !params.comment) throw new Error('Pour acquitter une alerte, indiquez son numéro et un commentaire.')
+          await acknowledgeAlert(params.alertId, params.comment)
+          response = `Alerte #${params.alertId} acquittée. Commentaire enregistré.`
+        } else if (action === 'create_work_order') {
+          if (role === 'OPERATEUR') throw new Error('Votre rôle permet d’acquitter une alerte, mais pas de créer un ordre de travail.')
+          const machine = await findMachine(params.machine)
+          if (!machine) throw new Error(`Machine ${params.machine || ''} introuvable dans votre périmètre.`)
+          const typeMap = { correctif: 'Corrective', préventif: 'Préventive', conditionnel: 'Préventive' }
+          const priorityMap = { haute: 'Haute', moyenne: 'Moyenne', basse: 'Basse' }
+          const created = await createWorkOrder({
+            machine_id: machine.id,
+            type: typeMap[params.type] || 'Corrective',
+            priorite: priorityMap[params.priority] || 'Moyenne',
+            titre: `Ordre créé par assistant vocal — ${machine.nom}`,
+            assigne: '—',
+          })
+          response = `Ordre de travail OT-${created.id} créé pour ${machine.nom}.`
+        } else if (action === 'set_work_order_status') {
+          if (role === 'OPERATEUR') throw new Error('Votre rôle ne permet pas de modifier le statut d’un ordre de travail.')
+          const updated = await updateWorkOrderStatus(params.otId, params.status)
+          response = `OT-${updated.id} passé au statut « ${updated.statut} ».`
+        } else if (action === 'dictate_report') {
+          if (role === 'OPERATEUR') throw new Error('La dictée de rapport est réservée aux techniciens et administrateurs.')
+          if (!params.otId) throw new Error('Précisez le numéro de l’ordre de travail à documenter.')
+          const order = await getWorkOrder(params.otId)
+          if (!['En cours', 'En attente pièces'].includes(order.statut)) {
+            throw new Error(`Le rapport de OT-${order.id} ne peut être déposé que lorsque l’OT est en cours ou en attente de pièces.`)
+          }
+          const signataire = [user?.prenom, user?.nom].filter(Boolean).join(' ')
+          setReportDraft({ otId: order.id, travaux: '', duree: '', observations: '', signataire, listening: true })
+          response = `Dictée ouverte pour OT-${order.id}. Dictez le travail réalisé, puis dites « terminer la dictée ».`
+        }
+      } catch (error) {
+        response = error.response?.data?.detail || error.response?.data?.statut?.[0] || error.response?.data?.commentaire?.[0] || error.message || 'L’action n’a pas pu être exécutée.'
       }
+      const confirmMsg = { role: 'assistant', text: response, time: new Date() }
       setMessages((prev) => [...prev, confirmMsg])
-      speak(confirmMsg.text)
-      setCommandHistory((prev) => [{
-        time: new Date(),
-        text: text.trim(),
-        intent: 'confirmation',
-        confidence,
-        result: 'Confirmé',
-      }, ...prev])
+      speak(response)
+      await recordCommand({ text: text.trim(), intent: pendingAction?.intent || 'confirmation', confidence, result: response })
       setPendingAction(null)
       setIsProcessing(false)
       return
@@ -348,20 +456,35 @@ export default function VocalPage() {
       }
       setMessages((prev) => [...prev, cancelMsg])
       speak(cancelMsg.text)
-      setCommandHistory((prev) => [{
-        time: new Date(),
-        text: text.trim(),
-        intent: 'annulation',
-        confidence,
-        result: 'Annulé',
-      }, ...prev])
+      await recordCommand({ text: text.trim(), intent: pendingAction?.intent || 'annulation', confidence, result: 'Annulé' })
       setPendingAction(null)
       setIsProcessing(false)
       return
     }
 
     // Generate response
-    const response = generateResponse(intent, params)
+    if (intent === 'ack_alert' && (!params.alertId || !params.comment)) {
+      const response = !params.alertId
+        ? 'Indiquez le numéro de l’alerte à acquitter.'
+        : 'Ajoutez un commentaire de traitement, par exemple : « acquitte l’alerte 12, vérifié sur place ».'
+      setMessages((prev) => [...prev, { role: 'assistant', text: response, time: new Date() }])
+      speak(response)
+      setIsProcessing(false)
+      return
+    }
+    if (['ack_alert', 'create_work_order', 'dictate_report', 'set_work_order_status'].includes(intent) && role === 'OPERATEUR' && intent !== 'ack_alert') {
+      const response = 'Cette action n’est pas autorisée pour le rôle opérateur.'
+      setMessages((prev) => [...prev, { role: 'assistant', text: response, time: new Date() }])
+      speak(response)
+      setIsProcessing(false)
+      return
+    }
+    let response
+    try {
+      response = await generateResponse(intent, params)
+    } catch (error) {
+      response = error.response?.data?.detail || 'Impossible de lire les données pour le moment. Vérifiez la connexion et les permissions, puis réessayez.'
+    }
 
     // Handle confirmation-required actions
     if (response.startsWith('confirm:')) {
@@ -370,6 +493,7 @@ export default function VocalPage() {
         ack_alert: `Acquitter l'alerte #${params.alertId || '???'}`,
         create_work_order: `Créer un OT ${params.type || 'correctif'} pour ${params.machine || 'M??'}`,
         dictate_report: `Démarrer la dictée pour l'OT #${params.otId || '???'}`,
+        set_work_order_status: `Modifier le statut de l'OT #${params.otId} vers « ${params.status} »`,
       }
       setPendingAction({
         intent,
@@ -383,13 +507,7 @@ export default function VocalPage() {
       }
       setMessages((prev) => [...prev, assistantMsg])
       speak(confirmText)
-      setCommandHistory((prev) => [{
-        time: new Date(),
-        text: text.trim(),
-        intent,
-        confidence,
-        result: 'En attente de confirmation',
-      }, ...prev])
+      await recordCommand({ text: text.trim(), intent, confidence, result: 'En attente de confirmation' })
       setIsProcessing(false)
       return
     }
@@ -403,16 +521,10 @@ export default function VocalPage() {
     setMessages((prev) => [...prev, assistantMsg])
     speak(response)
 
-    setCommandHistory((prev) => [{
-      time: new Date(),
-      text: text.trim(),
-      intent,
-      confidence,
-      result: response.length > 60 ? response.slice(0, 60) + '…' : response,
-    }, ...prev])
+    await recordCommand({ text: text.trim(), intent, confidence, result: response.length > 1000 ? response.slice(0, 997) + '…' : response })
 
     setIsProcessing(false)
-  }, [animatePipeline, pendingAction, speak])
+  }, [animatePipeline, pendingAction, recordCommand, reportDraft, role, speak, user?.nom, user?.prenom])
 
   // ─── Speech recognition ──────────────────────────────────────────
   const toggleListening = useCallback(() => {
@@ -469,6 +581,35 @@ export default function VocalPage() {
     setInputText('')
     voiceProcess(text, 1.0)
   }, [inputText, isProcessing, voiceProcess])
+
+  const handleSaveReport = useCallback(async (e) => {
+    e.preventDefault()
+    if (!reportDraft || reportSaving) return
+    if (!reportDraft.travaux.trim() || !reportDraft.signataire.trim()) {
+      setMessages((prev) => [...prev, { role: 'assistant', text: 'Renseignez les travaux réalisés et le signataire avant l’enregistrement.', time: new Date() }])
+      return
+    }
+    setReportSaving(true)
+    try {
+      await submitReport(reportDraft.otId, {
+        travaux: reportDraft.travaux.trim(),
+        duree: Number(reportDraft.duree) || 0,
+        observations: reportDraft.observations.trim(),
+        pieces: [],
+        signataire: reportDraft.signataire.trim(),
+      })
+      const response = `Rapport enregistré dans l’OT-${reportDraft.otId}. Son statut est maintenant « Rapport déposé ».`
+      setMessages((prev) => [...prev, { role: 'assistant', text: response, time: new Date() }])
+      await recordCommand({ text: `Rapport OT-${reportDraft.otId}`, intent: 'dictate_report', confidence: 1, result: 'Rapport déposé' })
+      setReportDraft(null)
+      speak(response)
+    } catch (error) {
+      const message = error.response?.data?.detail || error.response?.data?.travaux?.[0] || error.message || 'Le rapport n’a pas pu être enregistré.'
+      setMessages((prev) => [...prev, { role: 'assistant', text: message, time: new Date() }])
+    } finally {
+      setReportSaving(false)
+    }
+  }, [recordCommand, reportDraft, reportSaving, speak])
 
   // ─── Format time ────────────────────────────────────────────────
   const formatTime = (date) => {
@@ -582,6 +723,33 @@ export default function VocalPage() {
                 </div>
               )}
 
+              {reportDraft && (
+                <form onSubmit={handleSaveReport} className="mx-6 mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">Brouillon du rapport · OT-{reportDraft.otId}</h3>
+                    <button type="button" onClick={() => setReportDraft(null)} className="text-gray-500 hover:text-red-600" aria-label="Annuler le brouillon"><X className="h-4 w-4" /></button>
+                  </div>
+                  <p className="text-xs text-gray-600">{reportDraft.listening ? 'Dictée active : parlez ou tapez le texte, puis dites « terminer la dictée ».' : 'Relisez et complétez avant d’enregistrer le rapport dans le CMMS.'}</p>
+                  <label className="block text-sm text-gray-700">Travaux réalisés
+                    <textarea required rows={3} value={reportDraft.travaux} onChange={(e) => setReportDraft((d) => ({ ...d, travaux: e.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" placeholder="Décrire les travaux effectués" />
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block text-sm text-gray-700">Durée (heures)
+                      <input type="number" min="0" step="0.25" value={reportDraft.duree} onChange={(e) => setReportDraft((d) => ({ ...d, duree: e.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
+                    </label>
+                    <label className="block text-sm text-gray-700">Signataire
+                      <input required value={reportDraft.signataire} onChange={(e) => setReportDraft((d) => ({ ...d, signataire: e.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
+                    </label>
+                  </div>
+                  <label className="block text-sm text-gray-700">Observations
+                    <textarea rows={2} value={reportDraft.observations} onChange={(e) => setReportDraft((d) => ({ ...d, observations: e.target.value }))} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
+                  </label>
+                  <button type="submit" disabled={reportSaving || !reportDraft.travaux.trim()} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                    <Check className="h-4 w-4" />{reportSaving ? 'Enregistrement…' : 'Enregistrer le rapport'}
+                  </button>
+                </form>
+              )}
+
               {/* Input form */}
               <div className="px-6 py-4 border-t border-gray-200">
                 <form onSubmit={handleSubmit} className="flex items-center gap-3">
@@ -644,6 +812,7 @@ export default function VocalPage() {
                     </>
                   )}
                 </p>
+                <p className="mt-1 text-xs text-gray-400">L’application conserve uniquement le texte de la commande et son résultat. La reconnaissance vocale est fournie par le navigateur.</p>
               </div>
             </div>
           </div>
@@ -710,6 +879,7 @@ export default function VocalPage() {
               <thead>
                 <tr className="bg-gray-50 text-left">
                   <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Heure</th>
+                  {role === 'ADMIN' && <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Utilisateur</th>}
                   <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Texte</th>
                   <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Intention</th>
                   <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Confiance</th>
@@ -717,16 +887,19 @@ export default function VocalPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {commandHistory.length === 0 ? (
+                {historyLoading ? (
+                  <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">Chargement de l’historique…</td></tr>
+                ) : commandHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">
+                    <td colSpan={role === 'ADMIN' ? 6 : 5} className="px-6 py-8 text-center text-gray-400 text-sm">
                       Aucune commande enregistrée pour cette session
                     </td>
                   </tr>
                 ) : (
                   commandHistory.map((cmd, idx) => (
                     <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-3 text-gray-500 whitespace-nowrap">{formatTime(cmd.time)}</td>
+                      <td className="px-6 py-3 text-gray-500 whitespace-nowrap">{new Date(cmd.time).toLocaleString('fr-FR')}</td>
+                      {role === 'ADMIN' && <td className="px-6 py-3 text-gray-700 whitespace-nowrap">{cmd.utilisateur || '—'}</td>}
                       <td className="px-6 py-3 text-gray-800 max-w-xs truncate">{cmd.text}</td>
                       <td className="px-6 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">

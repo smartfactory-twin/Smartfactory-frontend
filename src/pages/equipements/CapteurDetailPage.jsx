@@ -8,6 +8,8 @@ import Spinner from '../../components/common/Spinner'
 import Alert from '../../components/common/Alert'
 import { useAuthContext } from '../../context/AuthContext'
 import { getCapteur, getReadings } from '../../services/sensorService'
+import SensorAiEligibilityBadge from '../../components/equipements/SensorAiEligibilityBadge'
+import { formatNullableThreshold } from '../../utils/sensorDisplay'
 
 export default function CapteurDetailPage() {
   const { user } = useAuthContext()
@@ -125,7 +127,7 @@ export default function CapteurDetailPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Fréquence</p>
-                <p className="text-sm font-medium text-gray-900">{capteur.frequence_mesure} secondes</p>
+                <p className="text-sm font-medium text-gray-900">{capteur.frequence_mesure ?? 'Non définie'} secondes</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Statut</p>
@@ -143,11 +145,11 @@ export default function CapteurDetailPage() {
             <div className="space-y-3">
               <div>
                 <p className="text-xs text-gray-500">Seuil minimum</p>
-                <p className="text-2xl font-bold text-blue-600">{capteur.seuil_min} {capteur.unite}</p>
+                <p className="text-2xl font-bold text-blue-600">{formatNullableThreshold(capteur.seuil_min)} {capteur.unite}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Seuil maximum</p>
-                <p className="text-2xl font-bold text-orange-600">{capteur.seuil_max} {capteur.unite}</p>
+                <p className="text-2xl font-bold text-orange-600">{formatNullableThreshold(capteur.seuil_max)} {capteur.unite}</p>
               </div>
               {capteur.description && (
                 <div className="pt-2 border-t">
@@ -155,6 +157,16 @@ export default function CapteurDetailPage() {
                   <p className="text-sm text-gray-700">{capteur.description}</p>
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="card p-6 md:col-span-2 lg:col-span-1">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Disponibilité IA</h2>
+            <div className="space-y-3 text-sm">
+              <p><span className="text-gray-500">Rôle : </span>{capteur.sensor_role || 'other'}</p>
+              <p><span className="text-gray-500">Plage nominale : </span>{formatNullableThreshold(capteur.nominal_min)} – {formatNullableThreshold(capteur.nominal_max)} {capteur.unit || capteur.unite}</p>
+              <p><span className="text-gray-500">Criticité : </span>{capteur.criticality || 'Non définie'}</p>
+              <SensorAiEligibilityBadge sensor={capteur} showReason />
             </div>
           </div>
 
@@ -171,7 +183,7 @@ export default function CapteurDetailPage() {
                   <div key={r.id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {r.valeur} {capteur.unite}
+                        {r.valeur ?? r.value ?? '—'} {capteur.unite}
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {new Date(r.timestamp).toLocaleString('fr-FR')}

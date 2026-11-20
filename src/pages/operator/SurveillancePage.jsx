@@ -7,6 +7,7 @@ import Spinner from '../../components/common/Spinner'
 import { MachineStatusBadge } from '../../components/common/StatusBadge'
 import { getMachines } from '../../services/machineService'
 import { getCapteurs, getReadings } from '../../services/sensorService'
+import { formatNullableThreshold } from '../../utils/sensorDisplay'
 
 // Rafraîchissement périodique (aucune infrastructure WebSocket dans le projet).
 const REFRESH_MS = 60000
@@ -370,7 +371,7 @@ function SensorTable({ rows }) {
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{capteur.unite}</td>
               <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
-                {capteur.seuil_min} – {capteur.seuil_max} {capteur.unite}
+                {formatNullableThreshold(capteur.seuil_min)} – {formatNullableThreshold(capteur.seuil_max)} {capteur.unite}
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                 {reading ? formatDateTime(reading.timestamp) : 'Aucune mesure'}

@@ -10,6 +10,7 @@ import EmptyState from '../../components/common/EmptyState'
 import { getMachines } from '../../services/machineService'
 import { getCapteurs, getReadings } from '../../services/sensorService'
 import { useAuthContext } from '../../context/AuthContext'
+import { formatNullableThreshold } from '../../utils/sensorDisplay'
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -91,7 +92,7 @@ function ReadingsChart({ series, onExportCsv }) {
     ...reading, sensor, seriesIndex: index,
   })))
   const values = allRows.map((reading) => Number(reading.valeur))
-  const thresholds = series.flatMap(({ sensor }) => [sensor?.seuil_min, sensor?.seuil_max]).filter(Number.isFinite)
+  const thresholds = series.flatMap(({ sensor }) => [sensor?.seuil_min, sensor?.seuil_max]).map(Number).filter(Number.isFinite)
   const min = Math.min(...thresholds, ...values, 0)
   const max = Math.max(...thresholds, ...values, 1)
   const spread = max - min || 1
@@ -150,7 +151,7 @@ function ReadingsChart({ series, onExportCsv }) {
             return <line key={index} x1="40" x2="760" y1={gridY} y2={gridY} stroke="var(--sf-line-soft)" />
           })}
           {series.map(({ sensor }, index) => [sensor?.seuil_min, sensor?.seuil_max].map((threshold, thresholdIndex) => (
-            Number.isFinite(threshold) && <line key={`${sensor.id}-${thresholdIndex}`} x1="40" x2="760" y1={y(threshold)} y2={y(threshold)} stroke={colors[index % colors.length]} strokeDasharray="5 5" opacity="0.65" />
+            threshold !== null && threshold !== undefined && threshold !== '' && Number.isFinite(Number(threshold)) && <line key={`${sensor.id}-${thresholdIndex}`} x1="40" x2="760" y1={y(Number(threshold))} y2={y(Number(threshold))} stroke={colors[index % colors.length]} strokeDasharray="5 5" opacity="0.65" />
           )))}
           {allRows.filter((reading) => reading.hors_plage).map((reading) => {
             const pointX = x(reading.timestamp)
@@ -200,7 +201,7 @@ function ReadingsChart({ series, onExportCsv }) {
           return <article key={sensor.id} className="sf-reading-summary" style={{ '--reading-color': colors[index % colors.length] }}>
             <span className="sf-reading-summary-label">{sensor.nom}</span>
             <strong>{latest ? `${Number(latest.valeur).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${sensor.unite || ''}` : '—'}</strong>
-            <small>{latest ? `Min ${sensor.seuil_min ?? '—'} · Max ${sensor.seuil_max ?? '—'} ${sensor.unite || ''}` : 'Aucune mesure disponible'}</small>
+            <small>{latest ? `Min ${formatNullableThreshold(sensor.seuil_min)} · Max ${formatNullableThreshold(sensor.seuil_max)} ${sensor.unite || ''}` : 'Aucune mesure disponible'}</small>
             {latest && <small className={latest.hors_plage ? 'is-alert' : ''}>{latest.hors_plage ? 'Dernier relevé hors seuil' : `Étendue ${minimum?.toLocaleString('fr-FR')} – ${maximum?.toLocaleString('fr-FR')}`}</small>}
           </article>
         })}

@@ -168,7 +168,7 @@ function AddUserModal({ onClose, onSuccess }) {
 
           <div className="user-create-note">
             <Info aria-hidden="true" />
-            <p>Un mot de passe temporaire sera envoyé automatiquement par e-mail. L’utilisateur devra le modifier lors de sa première connexion.</p>
+            <p>Un mot de passe généré sera envoyé automatiquement par e-mail. L’utilisateur peut le modifier depuis son profil quand il le souhaite.</p>
           </div>
           <div className="user-create-footer">
             <Button variant="secondary" onClick={onClose} type="button">Annuler</Button>
@@ -189,10 +189,10 @@ function UserDetailModal({ user: u, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 z-10 max-h-[90vh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-labelledby="user-detail-title" className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 z-10 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-900">Détails utilisateur</h2>
+          <h2 id="user-detail-title" className="text-lg font-bold text-gray-900">Détails utilisateur</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="h-5 w-5 text-gray-400" /></button>
         </div>
 
@@ -561,6 +561,7 @@ export default function UsersPage() {
                       <button
                         onClick={() => setDetailUser(u)}
                         title="Voir les détails"
+                        aria-label={`Voir les détails de ${u.prenom} ${u.nom}`}
                         className="sf-action-icon sf-action-view p-1.5 rounded-lg text-gray-400"
                       >
                         <Eye className="h-4 w-4" />
@@ -569,6 +570,7 @@ export default function UsersPage() {
                       <button
                         onClick={() => setEditTarget(u)}
                         title="Modifier"
+                        aria-label={`Modifier ${u.prenom} ${u.nom}`}
                         className="sf-action-icon sf-action-edit p-1.5 rounded-lg text-gray-400"
                       >
                         <Pencil className="h-4 w-4" />
