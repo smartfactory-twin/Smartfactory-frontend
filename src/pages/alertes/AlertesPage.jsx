@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bell, CheckCircle2, ClipboardList, Search, X } from 'lucide-react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TechnicianLayout from '../../components/layout/TechnicianLayout'
 import OperatorLayout from '../../components/layout/OperatorLayout'
@@ -40,9 +40,8 @@ function formatThreshold(alert) {
   return `${seuil}${unite}`
 }
 
-export default function AlertesPage({ mode = 'alerts' }) {
+export default function AlertesPage() {
   const { user } = useAuthContext()
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedAlertId = searchParams.get('alerte')
   const role = user?.role ?? 'OPERATEUR'
@@ -150,12 +149,14 @@ export default function AlertesPage({ mode = 'alerts' }) {
 
   const handleNotificationClick = async (notification) => {
     if (!notification?.alerte) return
+    await openAlertDetail(notification.alerte)
     try {
-      await markAsRead(notification.id)
-      await loadNotifications()
-      await openAlertDetail(notification.alerte)
+      if (!notification.lue) {
+        await markAsRead(notification.id)
+        await loadNotifications()
+      }
     } catch {
-      setSubmitMessage('Impossible d’ouvrir la notification.')
+      setSubmitMessage('Le détail est ouvert, mais la notification n’a pas pu être marquée comme lue.')
     }
   }
 
@@ -200,8 +201,7 @@ export default function AlertesPage({ mode = 'alerts' }) {
     if (!selectedAlert) return
     try {
       const payload = await prepareOtFromAlert(selectedAlert.id)
-      localStorage.setItem('smartfactory_ot_prep', JSON.stringify(payload))
-      setSubmitMessage(`Préparation d’OT enregistrée pour ${payload.machine_nom ?? 'la machine'}.`)
+      setSubmitMessage(payload.message || `OT #${payload.ordre?.id} créé pour ${payload.machine_nom ?? 'la machine'}.`)
     } catch {
       setSubmitMessage('Préparation de l’OT impossible pour le moment.')
     }
@@ -210,42 +210,18 @@ export default function AlertesPage({ mode = 'alerts' }) {
   const clearMessage = () => setSubmitMessage('')
 
   return (
-    <Layout pageTitle={mode === 'notifications' ? 'Notifications' : 'Alertes'}>
+    <Layout pageTitle="Alertes">
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {mode === 'notifications' ? 'Notifications' : 'Alertes'}
+              Alertes
             </h1>
             <p className="text-sm text-gray-500">
-              {mode === 'notifications'
-                ? 'Suivi des notifications in-app.'
-                : 'Vue d’ensemble des événements hors seuil.'}
+              Vue d’ensemble des événements hors seuil et des notifications associées.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/alertes')}
-              className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-            >
-              Alertes
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/notifications')}
-              className="relative inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-            >
-              <Bell className="h-4 w-4" />
-              Notifications
-              {unreadCount > 0 && (
-                <span className="absolute -top-2 -right-2 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-          </div>
         </div>
 
         {submitMessage && (

@@ -89,10 +89,10 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
   it('affiche le titre, la sélection de machine et l\'historique', async () => {
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: /inspection visuelle par ia/i })).toBeInTheDocument()
+    expect((await screen.findAllByRole('heading', { name: /inspection visuelle par ia/i })).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByLabelText(/machine à inspecter/i)).toBeInTheDocument()
     expect(screen.getByTestId('inspection-dropzone')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /analyser avec l'ia/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /envoyer et analyser les médias/i })).toBeInTheDocument()
 
     expect(await screen.findByText('Tech Test')).toBeInTheDocument()
     expect(screen.getByText('Tech Test')).toBeInTheDocument()
@@ -122,8 +122,8 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
     await uploadImage(container)
 
     expect(screen.getByText('photo.png')).toBeInTheDocument()
-    expect(screen.getByText('2.0 Ko')).toBeInTheDocument()
-    expect(screen.getByAltText('photo.png')).toBeInTheDocument()
+    expect(screen.getByText(/2\.0 Ko/)).toBeInTheDocument()
+    expect(container.querySelector('.sf-inspection-file img')).toBeInTheDocument()
   })
 
   it('lance l\'analyse IA et affiche le résultat', async () => {
@@ -135,7 +135,7 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/machine à inspecter/i), '1')
     await uploadImage(container)
-    await userEvent.click(screen.getByRole('button', { name: /analyser avec l'ia/i }))
+    await userEvent.click(screen.getByRole('button', { name: /envoyer et analyser les médias/i }))
 
     await waitFor(() => {
       expect(inspectionService.createInspection).toHaveBeenCalledTimes(1)
@@ -162,9 +162,9 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/machine à inspecter/i), '1')
     await uploadImage(container)
-    await userEvent.click(screen.getByRole('button', { name: /analyser avec l'ia/i }))
+    await userEvent.click(screen.getByRole('button', { name: /envoyer et analyser les médias/i }))
 
-    expect(await screen.findByText(/analyse en cours/i)).toBeInTheDocument()
+    expect(await screen.findByText(/envoi et analyse/i)).toBeInTheDocument()
 
     resolveAnalyze(ANALYZED)
     await waitFor(() => {
@@ -183,7 +183,7 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/machine à inspecter/i), '1')
     await uploadImage(container)
-    await userEvent.click(screen.getByRole('button', { name: /analyser avec l'ia/i }))
+    await userEvent.click(screen.getByRole('button', { name: /envoyer et analyser les médias/i }))
 
     expect(await screen.findByText(/erreur du service d'analyse ia/i)).toBeInTheDocument()
     expect(screen.queryByTestId('inspection-result-card')).not.toBeInTheDocument()
@@ -194,9 +194,9 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
     await screen.findByText('Tech Test')
 
     await userEvent.selectOptions(screen.getByLabelText(/machine à inspecter/i), '1')
-    await userEvent.click(screen.getByRole('button', { name: /analyser avec l'ia/i }))
+    await userEvent.click(screen.getByRole('button', { name: /envoyer et analyser les médias/i }))
 
-    expect(await screen.findByText(/veuillez importer une image/i)).toBeInTheDocument()
+    expect(await screen.findByText(/ajoutez au moins une photo/i)).toBeInTheDocument()
     expect(inspectionService.createInspection).not.toHaveBeenCalled()
   })
 
@@ -205,7 +205,7 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
     await screen.findByText('Tech Test')
 
     await uploadImage(container)
-    await userEvent.click(screen.getByRole('button', { name: /analyser avec l'ia/i }))
+    await userEvent.click(screen.getByRole('button', { name: /envoyer et analyser les médias/i }))
 
     expect(await screen.findByText(/veuillez sélectionner une machine/i)).toBeInTheDocument()
     expect(inspectionService.createInspection).not.toHaveBeenCalled()
@@ -248,13 +248,13 @@ describe('InspectionsPage — Module 4 (UC-10)', () => {
     confirmSpy.mockRestore()
   })
 
-  it('masque la suppression pour le technicien', async () => {
+  it('autorise la suppression d’inspection pour le technicien', async () => {
     renderPage('TECHNICIEN')
     await screen.findByText('Tech Test')
 
-    expect(screen.queryByTitle('Supprimer')).not.toBeInTheDocument()
+    expect(screen.getAllByTitle('Supprimer').length).toBeGreaterThan(0)
     // Le technicien peut toujours lancer une inspection.
-    expect(screen.getByRole('button', { name: /analyser avec l'ia/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /envoyer et analyser les médias/i })).toBeInTheDocument()
   })
 
   it('restreint l\'opérateur à la consultation', async () => {

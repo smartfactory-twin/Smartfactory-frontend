@@ -11,6 +11,7 @@ import * as machineService from '../../services/machineService'
 vi.mock('../../services/alertService', () => ({
   getAlerts: vi.fn(),
   getAlert: vi.fn(),
+  getAlertCounter: vi.fn(),
   acknowledgeAlert: vi.fn(),
   prepareOtFromAlert: vi.fn(),
 }))
@@ -99,6 +100,7 @@ function renderPage(role = 'ADMIN', initialPath = '/') {
 describe('AlertesPage', () => {
   beforeEach(() => {
     alertService.getAlerts.mockResolvedValue({ count: ALERTS.length, results: ALERTS })
+    alertService.getAlertCounter.mockResolvedValue({ actives: ALERTS.filter((alert) => alert.statut === 'ACTIVE').length })
     alertService.getAlert.mockImplementation(async (id) => ALERTS.find((a) => a.id === Number(id)))
     alertService.acknowledgeAlert.mockResolvedValue({ ok: true })
     alertService.prepareOtFromAlert.mockResolvedValue({

@@ -9,10 +9,18 @@ import OperatorLayout from '../../components/layout/OperatorLayout'
 import { useAuthContext } from '../../context/AuthContext'
 import { importSensorsCsv, previewSensorsCsv } from '../../services/sensorService'
 
-const CSV_SAMPLE = `sensor_id,name,machine_identifiant,type,unit,frequency_seconds,threshold_min,threshold_max,active,description
-TEMP-CNC-101,Température CNC 101,CNC-101,TEMPERATURE,°C,60,10,90,true,Capteur de température
-VIB-CNC-101,Vibration CNC 101,CNC-101,VIBRATION,mm/s,60,0,15,true,
-PRES-CNC-102,Pression CNC 102,CNC-102,PRESSION,bar,300,0,10,true,`
+const CSV_SAMPLE = `sensor_id,name,machine_identifiant,type,unit,frequency_seconds,threshold_min,threshold_max,active,description,sensor_role,nominal_min,nominal_max,criticality,is_ai_eligible
+TEMP-CNC-101,Température CNC 101,CNC-101,TEMPERATURE,°C,60,10,90,true,Capteur de température,temperature,20,80,high,true
+VIB-CNC-101,Vibration CNC 101,CNC-101,VIBRATION,mm/s,60,0,15,true,,vibration,0,12,medium,true
+PRES-CNC-102,Pression CNC 102,CNC-102,PRESSION,bar,300,0,10,true,,pressure,,,,false`
+
+function downloadCsvTemplate() {
+  const blob = new Blob([CSV_SAMPLE], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url; link.download = 'modele_import_capteurs.csv'; link.click()
+  URL.revokeObjectURL(url)
+}
 
 function Stat({ value, label, color }) {
   return (
@@ -190,6 +198,7 @@ export default function SensorsImportPage() {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="text-sm font-medium text-blue-900 mb-2">Format CSV attendu</h3>
             <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">{CSV_SAMPLE}</pre>
+            <button type="button" onClick={downloadCsvTemplate} className="btn-secondary mt-3 flex items-center gap-2"><FileText className="h-4 w-4" />Télécharger le modèle CSV</button>
             <p className="text-xs text-blue-800 mt-2">
               Types acceptés : TEMPERATURE, VIBRATION, PRESSION, COURANT,
               VITESSE_RPM, DEBIT, NIVEAU_SONORE. La fréquence est exprimée en
@@ -197,6 +206,7 @@ export default function SensorsImportPage() {
               <code>frequence_minutes</code> est aussi accepté et converti en
               secondes. La machine doit exister au préalable (via son identifiant interne).
             </p>
+            <p className="text-xs text-blue-800 mt-2">Colonnes IA facultatives : <code>sensor_role</code> (temperature, vibration, pressure, flow, current, speed, other), <code>nominal_min</code>, <code>nominal_max</code>, <code>criticality</code> (low, medium, high) et <code>is_ai_eligible</code>. Les seuils d’alerte restent facultatifs.</p>
           </div>
 
           <div className="space-y-4">

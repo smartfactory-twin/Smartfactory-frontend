@@ -8,5 +8,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/tests/setup.js',
     css: false,
+    // Les scénarios navigateur sont exécutés par Playwright.
+    include: ['src/tests/**/*.{test,spec}.{js,jsx,ts,tsx}'],
   },
 })

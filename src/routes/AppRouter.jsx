@@ -42,7 +42,6 @@ import VocalPage from '../pages/vocal/VocalPage'
 
 // Module 8 — Alertes & Notifications
 import AlertesPage         from '../pages/alertes/AlertesPage'
-import NotificationsPage    from '../pages/alertes/NotificationsPage'
 
 // Technician
 import TechDashboardPage   from '../pages/technician/DashboardPage'
@@ -126,7 +125,7 @@ export default function AppRouter() {
         </Route>
         <Route element={<ProtectedRoute />}>
           <Route path="/alertes" element={<AlertesPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/notifications" element={<Navigate to="/alertes" replace />} />
           <Route path="/assistant-vocal" element={<VocalPage />} />
         </Route>
 
@@ -153,7 +152,7 @@ export default function AppRouter() {
           <Route path="/technician/measures"
             element={<TechMesuresPage />} />
           <Route path="/technician/alerts" element={<AlertesPage />} />
-          <Route path="/technician/notifications" element={<NotificationsPage />} />
+          <Route path="/technician/notifications" element={<Navigate to="/technician/alerts" replace />} />
           <Route path="/technician/profile"
             element={<TechProfilePage />} />
           <Route path="/technician/settings"
@@ -169,7 +168,7 @@ export default function AppRouter() {
           <Route path="/operator/surveillance"
             element={<OpSurveillancePage />} />
           <Route path="/operator/alerts" element={<AlertesPage />} />
-          <Route path="/operator/notifications" element={<NotificationsPage />} />
+          <Route path="/operator/notifications" element={<Navigate to="/operator/alerts" replace />} />
           <Route path="/operator/profile"
             element={<OpProfilePage />} />
           <Route path="/operator/settings"

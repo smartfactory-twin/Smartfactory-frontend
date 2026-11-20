@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Camera, Image as ImageIcon, UploadCloud, X } from 'lucide-react'
 
 const ACCEPTED_EXT = /\.(jpe?g|png|webp)$/i
+const EMPTY_FILES = Object.freeze([])
 
 export function formatFileSize(bytes) {
   if (bytes == null) return ''
@@ -11,7 +12,7 @@ export function formatFileSize(bytes) {
 }
 
 export default function ImageUploadDropzone({
-  files = [], onFiles, onRemove, machineLabel, technicianName,
+  files = EMPTY_FILES, onFiles, onRemove, machineLabel, technicianName,
   disabled = false, maxFiles = 10, maxMb = 20,
 }) {
   const inputRef = useRef(null)

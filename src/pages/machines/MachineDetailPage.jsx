@@ -5,6 +5,7 @@ import {
   FileText, Package, Camera, Plus, X, Check, Maximize2, Activity,
 } from 'lucide-react'
 import { useAuthContext } from '../../context/AuthContext'
+import { formatNullableThreshold } from '../../utils/sensorDisplay'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TechnicianLayout from '../../components/layout/TechnicianLayout'
 import OperatorLayout from '../../components/layout/OperatorLayout'
@@ -79,7 +80,7 @@ function SensorReadingCard({ sensor, machineId, navigate }) {
       <span className="sf-machine-sensor-chart" aria-hidden="true">
         {values.length > 1 ? <svg viewBox="0 0 100 32" preserveAspectRatio="none"><polyline points={line} /></svg> : <span>Historique indisponible</span>}
       </span>
-      <small>Seuil : {sensor.seuil_min}–{sensor.seuil_max} {sensor.unite} <span>· ouvrir les mesures →</span></small>
+      <small>Seuil : {formatNullableThreshold(sensor.seuil_min)}–{formatNullableThreshold(sensor.seuil_max)} {sensor.unite} <span>· ouvrir les mesures →</span></small>
     </button>
   )
 }

@@ -83,15 +83,24 @@ function renderPage() {
 
 async function ouvrirModalAjout() {
   await userEvent.click(screen.getByRole('button', { name: /ajouter/i }))
-  await screen.findByRole('heading', { name: /ajouter un utilisateur/i })
+  await screen.findByRole('heading', { name: /nouvel utilisateur/i })
 }
 
 async function selectionLigne(valeurLigne = '100') {
+  if (screen.getByLabelText('Niveau').value !== 'ligne') {
+    await userEvent.selectOptions(screen.getByLabelText('Niveau'), 'ligne')
+  }
   await userEvent.selectOptions(screen.getByLabelText('Usine'), '1')
   await waitFor(() => expect(screen.getByLabelText('Zone / Atelier')).not.toBeDisabled())
   await userEvent.selectOptions(screen.getByLabelText('Zone / Atelier'), '10')
   await waitFor(() => expect(screen.getByLabelText('Ligne de production')).not.toBeDisabled())
   await userEvent.selectOptions(screen.getByLabelText('Ligne de production'), valeurLigne)
+}
+
+async function remplirNouvelUtilisateur({ prenom = 'Ali', nom = 'Benali', email = 'ali.benali@sf.tn' } = {}) {
+  await userEvent.type(screen.getByLabelText('Prénom'), prenom)
+  await userEvent.type(screen.getByLabelText('Nom'), nom)
+  await userEvent.type(screen.getByLabelText('Adresse e-mail'), email)
 }
 
 beforeEach(() => {
@@ -115,21 +124,17 @@ describe('UsersPage — création d’un utilisateur avec affectation', () => {
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.type(screen.getByPlaceholderText('Ali'),   'Ali')
-    await userEvent.type(screen.getByPlaceholderText('Benali'), 'Benali')
-    await userEvent.type(screen.getByPlaceholderText(/ali\.benali@/), 'ali.benali@sf.tn')
+    await remplirNouvelUtilisateur()
 
     // La section « Affectation / Périmètre d'accès » est présente.
     expect(screen.getByText(/Affectation \/ Périmètre d.acc.s/)).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: /ajouter une affectation/i }))
     await selectionLigne('100')
-    await userEvent.click(screen.getByRole('button', { name: /ajouter l’affectation/i }))
 
     // L'affectation est listée avant l'enregistrement.
     expect(await screen.findByText('Ligne #100')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: /créer et envoyer/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^créer$/i }))
 
     await waitFor(() => {
       expect(authService.adminCreateUser).toHaveBeenCalledWith(expect.objectContaining({
@@ -144,33 +149,27 @@ describe('UsersPage — création d’un utilisateur avec affectation', () => {
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.type(screen.getByPlaceholderText('Ali'),   'Yassine')
-    await userEvent.type(screen.getByPlaceholderText('Benali'), 'Trabelsi')
-    await userEvent.type(screen.getByPlaceholderText(/ali\.benali@/), 'yas.trabelsi@sf.tn')
+    await remplirNouvelUtilisateur({ prenom: 'Yassine', nom: 'Trabelsi', email: 'yas.trabelsi@sf.tn' })
     await userEvent.selectOptions(screen.getByLabelText('Rôle'), 'TECHNICIEN')
 
     expect(screen.getByText(/Affectation \/ Périmètre d.acc.s/)).toBeInTheDocument()
 
     // 1ʳᵉ périmètre : niveau Zone
-    await userEvent.click(screen.getByRole('button', { name: /ajouter une affectation/i }))
     await userEvent.selectOptions(screen.getByLabelText('Niveau'), 'zone')
     await userEvent.selectOptions(screen.getByLabelText('Usine'), '1')
     await waitFor(() => expect(screen.getByLabelText('Zone / Atelier')).not.toBeDisabled())
     await userEvent.selectOptions(screen.getByLabelText('Zone / Atelier'), '10')
-    await userEvent.click(screen.getByRole('button', { name: /ajouter l’affectation/i }))
     await waitFor(() => expect(screen.getByText('Zone #10')).toBeInTheDocument())
 
     // 2ᵉ périmètre : niveau Ligne (autre ligne)
-    await userEvent.click(screen.getByRole('button', { name: /ajouter une affectation/i }))
     await selectionLigne('200')
-    await userEvent.click(screen.getByRole('button', { name: /ajouter l’affectation/i }))
     await waitFor(() => expect(screen.getByText('Ligne #200')).toBeInTheDocument())
 
     // Les deux périmètres coexistent.
     expect(screen.getByText('Zone #10')).toBeInTheDocument()
     expect(screen.getByText('Ligne #200')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: /créer et envoyer/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^créer$/i }))
 
     await waitFor(() => {
       expect(authService.adminCreateUser).toHaveBeenCalledWith(expect.objectContaining({
@@ -185,15 +184,13 @@ describe('UsersPage — création d’un utilisateur avec affectation', () => {
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.click(screen.getByRole('button', { name: /ajouter une affectation/i }))
     await selectionLigne('100')
-    await userEvent.click(screen.getByRole('button', { name: /ajouter l’affectation/i }))
     await waitFor(() => expect(screen.getByText('Ligne #100')).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole('button', { name: /retirer ligne #100/i }))
 
     expect(screen.queryByText('Ligne #100')).not.toBeInTheDocument()
-    expect(screen.getByText('Aucune affectation sélectionnée.')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Périmètres sélectionnés' })).not.toBeInTheDocument()
   })
 
   it('refuse une affectation en double', async () => {
@@ -201,16 +198,14 @@ describe('UsersPage — création d’un utilisateur avec affectation', () => {
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.click(screen.getByRole('button', { name: /ajouter une affectation/i }))
     await selectionLigne('100')
-    await userEvent.click(screen.getByRole('button', { name: /ajouter l’affectation/i }))
     await waitFor(() => expect(screen.getByText('Ligne #100')).toBeInTheDocument())
 
-    await userEvent.click(screen.getByRole('button', { name: /ajouter une affectation/i }))
-    await selectionLigne('100')
-    await userEvent.click(screen.getByRole('button', { name: /ajouter l’affectation/i }))
-
-    expect(await screen.findByText('Cette affectation existe déjà.')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Niveau'), 'zone')
+    await userEvent.selectOptions(screen.getByLabelText('Zone / Atelier'), '10')
+    await userEvent.selectOptions(screen.getByLabelText('Niveau'), 'ligne')
+    await userEvent.selectOptions(screen.getByLabelText('Ligne de production'), '100')
+    expect(screen.getAllByText('Ligne #100')).toHaveLength(1)
   })
 
   it('test 7 — alerte qu’un OPERATEUR sans affectation n’a accès à aucune machine', async () => {
@@ -218,7 +213,6 @@ describe('UsersPage — création d’un utilisateur avec affectation', () => {
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    expect(screen.getByText('Aucune affectation sélectionnée.')).toBeInTheDocument()
     expect(
       screen.getByText('Sans affectation, cet opérateur n\'aura accès à aucune machine.')
     ).toBeInTheDocument()
@@ -244,9 +238,7 @@ it('masque l’avertissement dès qu’une affectation est sélectionnée', asyn
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.click(screen.getByRole('button', { name: /ajouter une affectation/i }))
     await selectionLigne('100')
-    await userEvent.click(screen.getByRole('button', { name: /ajouter l’affectation/i }))
     await screen.findByText('Ligne #100')
 
     expect(
@@ -259,10 +251,8 @@ it('masque l’avertissement dès qu’une affectation est sélectionnée', asyn
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.type(screen.getByPlaceholderText('Ali'),   'Sami')
-    await userEvent.type(screen.getByPlaceholderText('Benali'), 'Khelifi')
-    await userEvent.type(screen.getByPlaceholderText(/ali\.benali@/), 'sami.k@sf.tn')
-    await userEvent.click(screen.getByRole('button', { name: /créer et envoyer/i }))
+    await remplirNouvelUtilisateur({ prenom: 'Sami', nom: 'Khelifi', email: 'sami.k@sf.tn' })
+    await userEvent.click(screen.getByRole('button', { name: /^créer$/i }))
 
     await waitFor(() => {
       expect(authService.adminCreateUser).toHaveBeenCalledWith(
@@ -276,10 +266,8 @@ it('masque l’avertissement dès qu’une affectation est sélectionnée', asyn
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.type(screen.getByPlaceholderText('Ali'),   'Sami')
-    await userEvent.type(screen.getByPlaceholderText('Benali'), 'Khelifi')
-    await userEvent.type(screen.getByPlaceholderText(/ali\.benali@/), 'sami.k@sf.tn')
-    await userEvent.click(screen.getByRole('button', { name: /créer et envoyer/i }))
+    await remplirNouvelUtilisateur({ prenom: 'Sami', nom: 'Khelifi', email: 'sami.k@sf.tn' })
+    await userEvent.click(screen.getByRole('button', { name: /^créer$/i }))
 
     expect(await screen.findByText(/Utilisateur créé avec succès/)).toBeInTheDocument()
   })
@@ -292,10 +280,8 @@ it('masque l’avertissement dès qu’une affectation est sélectionnée', asyn
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
     await ouvrirModalAjout()
 
-    await userEvent.type(screen.getByPlaceholderText('Ali'),   'Ali')
-    await userEvent.type(screen.getByPlaceholderText('Benali'), 'Benali')
-    await userEvent.type(screen.getByPlaceholderText(/ali\.benali@/), 'ali.b@sf.tn')
-    await userEvent.click(screen.getByRole('button', { name: /créer et envoyer/i }))
+    await remplirNouvelUtilisateur({ email: 'ali.b@sf.tn' })
+    await userEvent.click(screen.getByRole('button', { name: /^créer$/i }))
 
     expect(
       await screen.findByText('Affectation #1 : ligne : Objet introuvable.')
@@ -309,7 +295,7 @@ it('masque l’avertissement dès qu’une affectation est sélectionnée', asyn
 
 describe('UsersPage — modification des affectations', () => {
   async function ouvrirModalEdition() {
-    await userEvent.click(screen.getByRole('button', { name: /^modifier$/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^modifier /i }))
     await screen.findByRole('heading', { name: /modifier l'utilisateur/i })
   }
 
@@ -363,7 +349,7 @@ describe('UsersPage — modification des affectations', () => {
     await ouvrirModalEdition()
     await waitFor(() => expect(screen.getByText(SCOPE_EXISTANTE.libelle)).toBeInTheDocument())
 
-    await userEvent.click(screen.getByRole('button', { name: /^Modifier / }))
+    await userEvent.click(screen.getByRole('button', { name: new RegExp(`^Modifier ${SCOPE_EXISTANTE.libelle}`) }))
     await waitFor(() => expect(screen.getByLabelText('Usine')).toHaveValue('1'))
     await userEvent.selectOptions(screen.getByLabelText('Ligne de production'), '200')
     await userEvent.click(screen.getByRole('button', { name: /^enregistrer l.affectation$/i }))
@@ -410,7 +396,7 @@ describe('UsersPage — modification des affectations', () => {
 
   it('test 6 — un ADMIN n’a pas de section d’affectation', async () => {
     authService.listUsers.mockResolvedValue([
-      { ...EXISTING_USER, id: 1, role: 'ADMIN', email: 'admin@sf.tn' },
+      { ...EXISTING_USER, id: 2, role: 'ADMIN', email: 'admin@sf.tn' },
     ])
     renderPage()
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
@@ -426,7 +412,7 @@ describe('UsersPage — modification des affectations', () => {
     // Un ADMIN n'a pas d'affectation ; on vérifie que le passage du rôle
     // à OPERATEUR fait apparaître la section.
     authService.listUsers.mockResolvedValue([
-      { ...EXISTING_USER, id: 1, role: 'ADMIN', email: 'admin@sf.tn' },
+      { ...EXISTING_USER, id: 2, role: 'ADMIN', email: 'admin@sf.tn' },
     ])
     perimetreService.getPerimetres.mockResolvedValue({ count: 0, results: [] })
     renderPage()
@@ -440,7 +426,7 @@ describe('UsersPage — modification des affectations', () => {
 
     expect(await screen.findByText('Affectations')).toBeInTheDocument()
     expect(screen.queryByText(/accès global/)).not.toBeInTheDocument()
-    await waitFor(() => expect(perimetreService.getPerimetres).toHaveBeenCalledWith({ utilisateur: 1 }))
+    await waitFor(() => expect(perimetreService.getPerimetres).toHaveBeenCalledWith({ utilisateur: 2 }))
   })
 })
 
@@ -456,27 +442,27 @@ describe('UsersPage — détail utilisateur', () => {
     renderPage()
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
 
-    await userEvent.click(screen.getByRole('button', { name: /voir les détails/i }))
-    await screen.findByRole('heading', { name: /détails utilisateur/i })
+    await userEvent.click(await screen.findByRole('button', { name: /voir les détails/i }))
+    const detailsDialog = await screen.findByRole('dialog', { name: /détails utilisateur/i })
 
     expect(await screen.findByText(/Périmètre d.acc.s/)).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.getByText(SCOPE_EXISTANTE.libelle)).toBeInTheDocument()
     })
     // Aucun contrôle d'écriture.
-    expect(screen.queryByRole('button', { name: /ajouter une affectation/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Modifier / })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Supprimer / })).not.toBeInTheDocument()
+    expect(within(detailsDialog).queryByRole('button', { name: /ajouter une affectation/i })).not.toBeInTheDocument()
+    expect(within(detailsDialog).queryByRole('button', { name: /^Modifier / })).not.toBeInTheDocument()
+    expect(within(detailsDialog).queryByRole('button', { name: /^Supprimer / })).not.toBeInTheDocument()
   })
 
   it('indique l’accès global pour un ADMIN', async () => {
     authService.listUsers.mockResolvedValue([
-      { ...EXISTING_USER, id: 1, role: 'ADMIN', email: 'admin@sf.tn' },
+      { ...EXISTING_USER, id: 2, role: 'ADMIN', email: 'admin@sf.tn' },
     ])
     renderPage()
     await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
 
-    await userEvent.click(screen.getByRole('button', { name: /voir les détails/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /voir les détails/i }))
     expect(await screen.findByText(/Accès global — aucune affectation requise/)).toBeInTheDocument()
     expect(perimetreService.getPerimetres).not.toHaveBeenCalled()
   })

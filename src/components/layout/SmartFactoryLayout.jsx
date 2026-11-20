@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity, Bell, Building2, ChevronDown, Cpu, GitBranch, LayoutDashboard,
+  Activity, Bell, Building2, ChevronDown, Cpu, FileText, GitBranch, LayoutDashboard,
   LogOut, Menu, Moon, Network, ScanLine, Sun, UserCircle, Users,
-  Wrench, Layers, Radio,
+  Wrench, Layers, Mic,
 } from 'lucide-react'
 import { useAuthContext } from '../../context/AuthContext'
 import NotificationBell from './NotificationBell'
+import { getAlertCounter } from '../../services/alertService'
 import logo from '../../assets/logo.png'
 import './smartfactory-shell.css'
 
@@ -31,9 +32,8 @@ const navigation = {
     { heading: 'Opérations' },
     { to: '/maintenance', label: 'Maintenance', icon: Wrench },
     { to: '/alertes', label: 'Alertes', icon: Bell },
-    { to: '/notifications', label: 'Notifications', icon: Radio },
-    { to: '/rapports', label: 'Rapports et exports', icon: Radio },
-    { to: '/assistant-vocal', label: 'Assistant vocal', icon: Radio },
+    { to: '/rapports', label: 'Rapports et exports', icon: FileText },
+    { to: '/assistant-vocal', label: 'Assistant vocal', icon: Mic },
     { heading: 'Système' },
     { to: '/admin/users', label: 'Utilisateurs', icon: Users },
   ],
@@ -50,8 +50,7 @@ const navigation = {
     { heading: 'Opérations' },
     { to: '/maintenance', label: 'Maintenance', icon: Wrench },
     { to: '/technician/alerts', label: 'Alertes', icon: Bell },
-    { to: '/technician/notifications', label: 'Notifications', icon: Radio },
-    { to: '/rapports', label: 'Rapports et exports', icon: Radio },
+    { to: '/rapports', label: 'Rapports et exports', icon: FileText },
   ],
   OPERATEUR: [
     { heading: 'Supervision' },
@@ -61,9 +60,8 @@ const navigation = {
     { to: '/capteurs', label: 'Capteurs', icon: Activity },
     { heading: 'Opérations' },
     { to: '/operator/alerts', label: 'Alertes', icon: Bell },
-    { to: '/operator/notifications', label: 'Notifications', icon: Radio },
     { heading: 'Assistant' },
-    { to: '/assistant-vocal', label: 'Assistant vocal', icon: Radio },
+    { to: '/assistant-vocal', label: 'Assistant vocal', icon: Mic },
   ],
 }
 
@@ -73,8 +71,9 @@ const profileRoute = {
   OPERATEUR: '/operator/profile',
 }
 
-function SidebarLink({ item, collapsed, onNavigate }) {
+function SidebarLink({ item, collapsed, onNavigate, alertCount = 0 }) {
   const Icon = item.icon
+  const badgeCount = item.label === 'Alertes' ? alertCount : 0
   return (
     <NavLink
       to={item.to}
@@ -85,6 +84,8 @@ function SidebarLink({ item, collapsed, onNavigate }) {
     >
       <Icon aria-hidden="true" />
       {!collapsed && <span>{item.label}</span>}
+      {badgeCount > 0 && <span className="sf-nav-count" aria-label={`${badgeCount} ${item.label.toLowerCase()}`}>{badgeCount > 99 ? '99+' : badgeCount}</span>}
+      {collapsed && badgeCount > 0 && <span className="sf-nav-count sf-nav-count-collapsed" aria-label={`${badgeCount} ${item.label.toLowerCase()}`}>{badgeCount > 99 ? '99+' : badgeCount}</span>}
     </NavLink>
   )
 }
@@ -120,6 +121,7 @@ export default function SmartFactoryLayout({ children, pageTitle, role }) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [alertCount, setAlertCount] = useState(0)
   const [themePreference, setThemePreference] = useState(() => localStorage.getItem('sf-theme-preference') || (localStorage.getItem('sf-theme') === 'dark' ? 'dark' : null))
   const [systemDark, setSystemDark] = useState(() => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const dark = themePreference ? themePreference === 'dark' : systemDark
@@ -148,6 +150,25 @@ export default function SmartFactoryLayout({ children, pageTitle, role }) {
 
   useEffect(() => setMobileOpen(false), [location.pathname])
 
+  useEffect(() => {
+    let active = true
+    const refreshCounters = async () => {
+      const alertsResult = await Promise.allSettled([getAlertCounter()])
+      if (!active) return
+      if (alertsResult[0].status === 'fulfilled') setAlertCount(alertsResult[0].value?.actives ?? 0)
+    }
+    refreshCounters()
+    const interval = window.setInterval(refreshCounters, 30_000)
+    window.addEventListener('focus', refreshCounters)
+    window.addEventListener('alerts-updated', refreshCounters)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshCounters)
+      window.removeEventListener('alerts-updated', refreshCounters)
+    }
+  }, [location.pathname])
+
   const handleLogout = async () => {
     setLoggingOut(true)
     await logout()
@@ -173,7 +194,7 @@ export default function SmartFactoryLayout({ children, pageTitle, role }) {
             ? (!collapsed && <div key={`heading-${index}`} className="sf-nav-heading">{item.heading}</div>)
             : item.group
               ? <NavigationGroup key={item.group} item={item} collapsed={collapsed} onNavigate={() => setMobileOpen(false)} />
-              : <SidebarLink key={item.to} item={item} collapsed={collapsed} onNavigate={() => setMobileOpen(false)} />)}
+              : <SidebarLink key={item.to} item={item} collapsed={collapsed} alertCount={alertCount} onNavigate={() => setMobileOpen(false)} />)}
         </nav>
         <div className="sf-sidebar-footer">
           {!collapsed && <NavLink to={profile} className="sf-user-card">
@@ -203,7 +224,7 @@ export default function SmartFactoryLayout({ children, pageTitle, role }) {
       </div>
 
       <nav className="sf-mobile-tabbar" aria-label="Navigation rapide">
-        {mobileLinks.map((item) => <SidebarLink key={item.to} item={item} onNavigate={() => setMobileOpen(false)} />)}
+        {mobileLinks.map((item) => <SidebarLink key={item.to} item={item} alertCount={alertCount} onNavigate={() => setMobileOpen(false)} />)}
         <button className="sf-nav-link" onClick={() => setMobileOpen(true)}><Menu aria-hidden="true" /><span>Plus</span></button>
       </nav>
     </div>

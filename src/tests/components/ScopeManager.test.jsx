@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ScopeManager from '../../components/users/ScopeManager'
 import * as perimetreService from '../../services/perimetreService'
@@ -99,14 +99,19 @@ describe('ScopeManager — lecture des affectations', () => {
     })
   })
 
-  it('affiche l’état de chargement avant la réponse de l’API', () => {
+  it('affiche l’état de chargement avant la réponse de l’API', async () => {
     let resolve
     perimetreService.getPerimetres.mockReturnValue(
       new Promise(r => { resolve = r })
     )
     mount()
     expect(screen.getByText('Chargement des affectations…')).toBeInTheDocument()
-    resolve({ count: 0, results: [] })
+    await act(async () => {
+      resolve({ count: 0, results: [] })
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Aucune affectation configurée.')).toBeInTheDocument()
+    })
   })
 
   it('affiche une erreur API lisible', async () => {

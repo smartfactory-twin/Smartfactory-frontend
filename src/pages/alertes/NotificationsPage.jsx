@@ -9,7 +9,6 @@ import {
   getNotifications,
   getNotificationCount,
   markAllAsRead,
-  markAsRead,
 } from '../../services/notificationService'
 
 const notificationRoutes = {
@@ -74,8 +73,6 @@ export default function NotificationsPage() {
 
   const handleNotificationClick = async (notification) => {
     try {
-      if (!notification.lue) await markAsRead(notification.id)
-      await refreshNotifications()
       if (notification.alerte) {
         navigate(`${routes.alerts}?alerte=${encodeURIComponent(notification.alerte)}`)
       }

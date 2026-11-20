@@ -10,6 +10,7 @@ import {
   arrayToCsv, downloadCsv,
 } from '../../services/reportService'
 import { getMachines } from '../../services/machineService'
+import { formatHealthIndicator, formatNullableThreshold } from '../../utils/sensorDisplay'
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -242,11 +243,11 @@ function ReportPreview({ report, user, onExportPdf, exportingPdf, pdfError }) {
 }
 
 function HealthReport({ report }) {
-  const health = report.sante ?? 0
+  const health = report.sante == null || !Number.isFinite(Number(report.sante)) ? null : Number(report.sante)
   const rul = report.rul
   const circumference = 2 * Math.PI * 45
-  const offset = circumference - (health / 100) * circumference
-  const color = report.sante == null ? '#cbd5e1' : health >= 70 ? '#10b981' : health >= 40 ? '#f59e0b' : '#ef4444'
+  const offset = health == null ? circumference : circumference - (health / 100) * circumference
+  const color = health == null ? '#cbd5e1' : health >= 70 ? '#10b981' : health >= 40 ? '#f59e0b' : '#ef4444'
 
   return (
     <div className="space-y-6">
@@ -257,9 +258,10 @@ function HealthReport({ report }) {
             <circle cx="60" cy="60" r="45" fill="none" stroke={color} strokeWidth="10"
               strokeDasharray={circumference} strokeDashoffset={offset}
               strokeLinecap="round" transform="rotate(-90 60 60)" />
-            <text x="60" y="55" textAnchor="middle" fill="#111827" fontSize={health === 0 && report.sante == null ? '14' : '24'} fontWeight="700">{report.sante == null ? 'N/D' : health}</text>
-            <text x="60" y="72" textAnchor="middle" fill="#6b7280" fontSize="9">DANS SEUILS</text>
+            <text x="60" y="55" textAnchor="middle" fill="#111827" fontSize="24" fontWeight="700">{health == null ? '—' : health}</text>
+            <text x="60" y="72" textAnchor="middle" fill="#6b7280" fontSize="9">INDICE SANTÉ</text>
           </svg>
+          <p className="mt-1 text-xs text-gray-500">{formatHealthIndicator(report.sante)}</p>
         </div>
         <div>
           <p className="text-4xl font-bold text-gray-900">{rul == null ? '—' : rul}</p>
@@ -288,10 +290,10 @@ function HealthReport({ report }) {
             {(report.capteurs || []).map((s, i) => (
               <tr key={i} className="border-b border-gray-100">
                 <td className="px-3 py-2 font-medium text-gray-800">{s.nom} ({s.unite})</td>
-                <td className="px-3 py-2 font-mono text-gray-700">{Number(s.min).toFixed(1)}</td>
-                <td className="px-3 py-2 font-mono text-gray-700">{Number(s.moy).toFixed(1)}</td>
-                <td className={`px-3 py-2 font-mono ${Number(s.max) > Number(s.seuil_max) ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>{Number(s.max).toFixed(1)}</td>
-                <td className="px-3 py-2 font-mono text-gray-500">{s.seuil_max}</td>
+                <td className="px-3 py-2 font-mono text-gray-700">{s.min == null || !Number.isFinite(Number(s.min)) ? 'Non calculable' : Number(s.min).toFixed(1)}</td>
+                <td className="px-3 py-2 font-mono text-gray-700">{s.moy == null || !Number.isFinite(Number(s.moy)) ? 'Non calculable' : Number(s.moy).toFixed(1)}</td>
+                <td className={`px-3 py-2 font-mono ${s.max != null && s.seuil_max != null && Number.isFinite(Number(s.max)) && Number(s.max) > Number(s.seuil_max) ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>{s.max == null || !Number.isFinite(Number(s.max)) ? 'Non calculable' : Number(s.max).toFixed(1)}</td>
+                <td className="px-3 py-2 font-mono text-gray-500">{formatNullableThreshold(s.seuil_max)}</td>
               </tr>
             ))}
           </tbody>

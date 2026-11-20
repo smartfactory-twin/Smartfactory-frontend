@@ -116,6 +116,8 @@
 .sf-nav-link:hover, .sf-nav-group-button:hover { color: #fff; background: var(--sf-sidebar-active); }
 .sf-nav-link.is-active { color: #fff; background: var(--sf-sidebar-active); box-shadow: inset 3px 0 #6c97ff; }
 .sf-nav-link.is-collapsed { justify-content: center; padding-inline: 4px; }
+.sf-nav-count { display: inline-grid; min-width: 19px; height: 19px; flex: none; place-items: center; margin-left: auto; padding: 0 5px; border-radius: 999px; background: #ef4444; color: #fff; font: 700 10px/1 'IBM Plex Sans', sans-serif; }
+.sf-nav-count-collapsed { position: absolute; top: 1px; right: 1px; min-width: 16px; height: 16px; padding: 0 3px; font-size: 9px; }
 .sf-nav-group-button > span { flex: 1; }
 .sf-nav-group-button > svg:last-child { width: 14px; height: 14px; transition: transform .15s ease; }
 .sf-nav-group-button > svg:last-child.is-closed { transform: rotate(-90deg); }
@@ -145,6 +147,10 @@
 .sf-topbar > a[aria-label^='Notifications'] { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border: 1px solid var(--sf-line); border-radius: 9px; background: var(--sf-surface); }
 .sf-topbar > a[aria-label^='Notifications']:hover { background: var(--sf-surface-soft); }
 .sf-topbar > a[aria-label^='Notifications'] svg { color: var(--sf-ink-soft); }
+.sf-top-alert-link, .sf-top-notification-link { position: relative; display: grid; width: 38px; height: 38px; flex: none; place-items: center; border: 1px solid var(--sf-line); border-radius: 9px; background: var(--sf-surface); color: var(--sf-ink-soft); }
+.sf-top-alert-link:hover, .sf-top-notification-link:hover { background: var(--sf-surface-soft); color: var(--sf-ink); }
+.sf-top-alert-link > svg, .sf-top-notification-link > svg { width: 19px; height: 19px; }
+.sf-top-count { position: absolute; top: -6px; right: -6px; display: grid; min-width: 18px; height: 18px; place-items: center; padding: 0 4px; border: 2px solid var(--sf-surface); border-radius: 999px; background: #ef4444; color: white; font: 700 10px/1 'IBM Plex Sans', sans-serif; }
 .sf-content { min-width: 0; flex: 1; overflow: auto; padding: 22px clamp(16px, 2.2vw, 32px) 36px; background: var(--sf-bg); }
 .sf-mobile-menu, .sf-mobile-scrim, .sf-mobile-tabbar { display: none; }
 
@@ -382,6 +388,8 @@
 .sf-content .shadow, .sf-content .shadow-sm, .sf-content .shadow-md, .sf-content .shadow-lg { box-shadow: var(--sf-shadow) !important; }
 .sf-content .bg-red-50 { background-color: color-mix(in srgb, var(--sf-crit) 12%, var(--sf-surface)) !important; }
 .sf-content .bg-green-50, .sf-content .bg-emerald-50 { background-color: color-mix(in srgb, var(--sf-ok) 12%, var(--sf-surface)) !important; }
+:root[data-theme='dark'] .sf-content .bg-primary-50 { background-color: color-mix(in srgb, var(--sf-accent) 12%, var(--sf-surface)) !important; }
+:root[data-theme='dark'] .sf-content .border-primary-200 { border-color: color-mix(in srgb, var(--sf-accent) 38%, var(--sf-line)) !important; }
 
 /* Keep utility hover/focus backgrounds inside the dark color palette. */
 :root[data-theme='dark'] .sf-content .hover\:bg-white:hover,

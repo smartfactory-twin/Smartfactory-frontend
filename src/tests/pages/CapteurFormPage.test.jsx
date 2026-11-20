@@ -49,7 +49,6 @@ async function fillCreateForm(container) {
   await userEvent.type(container.querySelector('input[name="identifiant"]'), 'TEMP-009')
   await userEvent.type(container.querySelector('input[name="nom"]'), 'Capteur Test')
   await userEvent.selectOptions(container.querySelector('select[name="machine"]'), '1')
-  await userEvent.type(container.querySelector('input[name="unite"]'), '°C')
   await userEvent.type(container.querySelector('input[name="frequence_mesure"]'), '10')
   await userEvent.type(container.querySelector('input[name="seuil_min"]'), '0')
   await userEvent.type(container.querySelector('input[name="seuil_max"]'), '80')
