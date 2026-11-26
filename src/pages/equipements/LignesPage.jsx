@@ -36,6 +36,21 @@ function LigneModal({ ligne, onSave, onClose }) {
     getUsines({ page_size: 200 }).then(d => setUsines(d.results ?? d)).catch(() => {})
   }, [])
 
+  // En édition, la ligne fournit l'identifiant de sa zone. Charger cette zone
+  // permet de retrouver l'usine parente et de préremplir les deux listes.
+  useEffect(() => {
+    if (!ligne?.zone) return
+    getZones({ page_size: 200 })
+      .then(d => {
+        const zone = (d.results ?? d).find(item => String(item.id) === String(ligne.zone))
+        if (zone) {
+          setUsineId(String(zone.usine))
+          setZoneId(String(zone.id))
+        }
+      })
+      .catch(() => {})
+  }, [ligne?.zone])
+
   useEffect(() => {
     if (!usineId) { setZones([]); return }
     getZones({ usine: usineId, page_size: 200 }).then(d => setZones(d.results ?? d)).catch(() => {})

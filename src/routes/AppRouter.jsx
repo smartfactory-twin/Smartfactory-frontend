@@ -11,6 +11,7 @@ import ResetSuccessPage    from '../pages/auth/ResetSuccessPage'
 // Admin
 import AdminDashboardPage  from '../pages/admin/DashboardPage'
 import AdminUsersPage      from '../pages/admin/UsersPage'
+import AdminUserDetailPage from '../pages/admin/UserDetailPage'
 import AdminProfilePage    from '../pages/admin/ProfilePage'
 import PlaceholderPage     from '../pages/PlaceholderPage'
 
@@ -139,6 +140,7 @@ export default function AppRouter() {
         <Route element={<ProtectedRoute roles={['ADMIN']} />}>
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/users"     element={<AdminUsersPage />} />
+          <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
           <Route path="/admin/profile"   element={<AdminProfilePage />} />
           <Route path="/admin/*"         element={<PlaceholderPage title="Module Admin" />} />
         </Route>

@@ -36,3 +36,4 @@ npm-audit-offline.json
 
 # Vite
 vite.config.js.timestamp-*
+reports/

@@ -56,9 +56,7 @@ export default function MachineFormPage() {
       .then(d => setZones(d.results ?? d))
       .catch(() => {})
     setLignes([])
-    setSelectedZone('')
-    setValue('ligne_production', '')
-  }, [selectedUsine, setValue])
+  }, [selectedUsine])
 
   // Charger lignes quand zone change
   useEffect(() => {
@@ -66,8 +64,7 @@ export default function MachineFormPage() {
     getLignes({ zone: selectedZone, page_size: 200 })
       .then(d => setLignes(d.results ?? d))
       .catch(() => {})
-    setValue('ligne_production', '')
-  }, [selectedZone, setValue])
+  }, [selectedZone])
 
   // Pré-remplir en mode édition
   useEffect(() => {
@@ -87,6 +84,8 @@ export default function MachineFormPage() {
           statut:             m.statut,
           ligne_production:   m.ligne_production ?? '',
         })
+        setSelectedUsine(String(m.usine ?? ''))
+        setSelectedZone(String(m.zone ?? ''))
         if (m.photo) setPhotoPreview(m.photo)
         // Cascades : on ne peut pas pré-sélectionner usine/zone sans données supplémentaires
         // mais ligne_production_id est déjà dans le formulaire
@@ -265,7 +264,7 @@ export default function MachineFormPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Usine</label>
                 <select
                   value={selectedUsine}
-                  onChange={e => setSelectedUsine(e.target.value)}
+                  onChange={e => { setSelectedUsine(e.target.value); setSelectedZone(''); setValue('ligne_production', '') }}
                   className="input-field"
                 >
                   <option value="">— Sélectionner —</option>
@@ -276,7 +275,7 @@ export default function MachineFormPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Zone</label>
                 <select
                   value={selectedZone}
-                  onChange={e => setSelectedZone(e.target.value)}
+                  onChange={e => { setSelectedZone(e.target.value); setValue('ligne_production', '') }}
                   disabled={!selectedUsine}
                   className="input-field disabled:opacity-50"
                 >

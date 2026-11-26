@@ -20,7 +20,15 @@ const SENSOR_TYPES = [
   { value: 'NIVEAU_SONORE', label: 'Niveau sonore', unit: 'dB' },
 ]
 const SENSOR_UNIT_BY_TYPE = Object.fromEntries(SENSOR_TYPES.map(({ value, unit }) => [value, unit]))
-const SENSOR_ROLES = ['temperature', 'vibration', 'pressure', 'flow', 'current', 'speed', 'other']
+const SENSOR_ROLE_BY_TYPE = {
+  TEMPERATURE: 'temperature',
+  VIBRATION: 'vibration',
+  PRESSION: 'pressure',
+  DEBIT: 'flow',
+  COURANT: 'current',
+  VITESSE_RPM: 'speed',
+  NIVEAU_SONORE: 'other',
+}
 const CRITICALITIES = ['low', 'medium', 'high']
 
 function FieldError({ children }) {
@@ -57,13 +65,16 @@ export default function CapteurFormPage() {
     seuil_max: '',
     actif: true,
     description: '',
-    sensor_role: 'other', nominal_min: '', nominal_max: '', criticality: 'medium', is_ai_eligible: false,
+    criticality: 'medium', is_ai_eligible: false,
   })
   const [fieldErrors, setFieldErrors] = useState({})
-  const nominalComplete = formData.nominal_min !== '' && formData.nominal_max !== '' && Number.isFinite(Number(formData.nominal_min)) && Number.isFinite(Number(formData.nominal_max))
-  const nominalValid = nominalComplete && Number(formData.nominal_min) < Number(formData.nominal_max)
-  const eligibilityDisabled = formData.sensor_role === 'other' || !nominalValid
-  const eligibilityReason = formData.sensor_role === 'other' ? 'Choisissez un rôle différent de « other ».' : 'Renseignez deux bornes nominales valides, avec min < max.'
+  const sensorRole = SENSOR_ROLE_BY_TYPE[formData.type_capteur] || 'other'
+  const boundsComplete = formData.seuil_min !== '' && formData.seuil_max !== ''
+  const boundsValid = boundsComplete && Number.isFinite(Number(formData.seuil_min)) && Number.isFinite(Number(formData.seuil_max)) && Number(formData.seuil_min) < Number(formData.seuil_max)
+  const eligibilityDisabled = sensorRole === 'other' || !boundsValid
+  const eligibilityReason = sensorRole === 'other'
+    ? 'Ce type de capteur ne possède pas de rôle IA compatible.'
+    : 'Renseignez les deux seuils avec un minimum inférieur au maximum.'
 
   useEffect(() => {
     getMachines({ page_size: 200 }).then(res => {
@@ -82,11 +93,10 @@ export default function CapteurFormPage() {
           machine: data.machine || '',
           unite: SENSOR_UNIT_BY_TYPE[data.type_capteur] || data.unite || '',
           frequence_mesure: data.frequence_mesure ?? '',
-          seuil_min: data.seuil_min ?? '',
-          seuil_max: data.seuil_max ?? '',
           actif: data.actif ?? true,
           description: data.description || '',
-          sensor_role: data.sensor_role || 'other', nominal_min: data.nominal_min ?? '', nominal_max: data.nominal_max ?? '',
+          seuil_min: data.seuil_min ?? data.nominal_min ?? '',
+          seuil_max: data.seuil_max ?? data.nominal_max ?? '',
           criticality: data.criticality || 'medium', is_ai_eligible: Boolean(data.is_ai_eligible),
         })
       }).catch(() => {
@@ -100,11 +110,10 @@ export default function CapteurFormPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     const nextErrors = {}
-    const hasNominalMin = formData.nominal_min !== ''
-    const hasNominalMax = formData.nominal_max !== ''
-    if (hasNominalMin !== hasNominalMax) nextErrors.nominal_min = 'Les deux bornes nominales doivent être renseignées ensemble.'
-    else if (hasNominalMin && Number(formData.nominal_min) >= Number(formData.nominal_max)) nextErrors.nominal_min = 'La borne minimum doit être inférieure à la borne maximum.'
-    if (formData.is_ai_eligible && (formData.sensor_role === 'other' || !nominalValid)) nextErrors.is_ai_eligible = 'Un rôle pris en charge et deux bornes nominales valides sont requis.'
+    if (formData.seuil_min !== '' && formData.seuil_max !== '' && Number(formData.seuil_min) >= Number(formData.seuil_max)) {
+      nextErrors.seuil_min = 'Le seuil minimum doit être inférieur au seuil maximum.'
+    }
+    if (formData.is_ai_eligible && eligibilityDisabled) nextErrors.is_ai_eligible = eligibilityReason
     if (Object.keys(nextErrors).length) { setFieldErrors(nextErrors); return }
     setFieldErrors({})
     setLoading(true)
@@ -117,8 +126,9 @@ export default function CapteurFormPage() {
       frequence_mesure: parseInt(formData.frequence_mesure),
       seuil_min: formData.seuil_min === '' ? null : Number(formData.seuil_min),
       seuil_max: formData.seuil_max === '' ? null : Number(formData.seuil_max),
-      nominal_min: formData.nominal_min === '' ? null : Number(formData.nominal_min),
-      nominal_max: formData.nominal_max === '' ? null : Number(formData.nominal_max),
+      sensor_role: sensorRole,
+      nominal_min: formData.seuil_min === '' || formData.seuil_max === '' ? null : Number(formData.seuil_min),
+      nominal_max: formData.seuil_min === '' || formData.seuil_max === '' ? null : Number(formData.seuil_max),
     }
 
     try {
@@ -130,7 +140,13 @@ export default function CapteurFormPage() {
       navigate('/capteurs')
     } catch (err) {
       const data = err?.response?.data || {}
-      const mapped = Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'detail' && key !== 'non_field_errors').map(([key, value]) => [key, asFieldMessage(value)]).filter(([, value]) => value))
+      const mapped = Object.fromEntries(Object.entries(data)
+        .filter(([key]) => key !== 'detail' && key !== 'non_field_errors')
+        .map(([key, value]) => {
+          const visibleField = ({ nominal_min: 'seuil_min', nominal_max: 'seuil_max', sensor_role: 'type_capteur' })[key] || key
+          return [visibleField, asFieldMessage(value)]
+        })
+        .filter(([, value]) => value))
       setFieldErrors(mapped)
       setError(data.detail || asFieldMessage(data.non_field_errors) || (Object.keys(mapped).length ? '' : 'Erreur lors de l\'enregistrement.'))
     } finally {
@@ -140,12 +156,12 @@ export default function CapteurFormPage() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
-    setFieldErrors((prev) => ({ ...prev, [name]: undefined, ...(name === 'nominal_min' || name === 'nominal_max' ? { nominal_min: undefined, nominal_max: undefined } : {}) }))
+    setFieldErrors((prev) => ({ ...prev, [name]: undefined, ...(name === 'seuil_min' || name === 'seuil_max' ? { seuil_min: undefined, seuil_max: undefined } : {}) }))
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
-      ...(name === 'sensor_role' && value === 'other' ? { is_ai_eligible: false } : {}),
-      ...((name === 'nominal_min' || name === 'nominal_max') && (!value || !prev.nominal_min || !prev.nominal_max) ? { is_ai_eligible: false } : {}),
+      ...((name === 'type_capteur' && (SENSOR_ROLE_BY_TYPE[value] || 'other') === 'other') ? { is_ai_eligible: false } : {}),
+      ...((name === 'seuil_min' || name === 'seuil_max') && (!value || !(name === 'seuil_min' ? prev.seuil_max : prev.seuil_min)) ? { is_ai_eligible: false } : {}),
       ...(name === 'type_capteur' ? { unite: SENSOR_UNIT_BY_TYPE[value] || '' } : {}),
     }))
   }
@@ -190,33 +206,6 @@ export default function CapteurFormPage() {
                 <FieldError>{fieldErrors.nom}</FieldError>
               </div>
             </div>
-
-            <section className="border-t pt-5 space-y-4">
-              <h2 className="text-base font-semibold text-gray-900">Métadonnées IA</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="block text-sm font-medium text-gray-700">Rôle du capteur
-                  <select name="sensor_role" value={formData.sensor_role} onChange={handleChange} className="input-field mt-2">{SENSOR_ROLES.map((item) => <option key={item} value={item}>{item}</option>)}</select>
-                  <FieldError>{fieldErrors.sensor_role}</FieldError>
-                </label>
-                <label className="block text-sm font-medium text-gray-700">Criticité
-                  <select name="criticality" value={formData.criticality} onChange={handleChange} className="input-field mt-2">{CRITICALITIES.map((item) => <option key={item} value={item}>{item}</option>)}</select>
-                  <FieldError>{fieldErrors.criticality}</FieldError>
-                </label>
-                <label className="block text-sm font-medium text-gray-700">Minimum nominal
-                  <input type="number" step="any" name="nominal_min" value={formData.nominal_min} onChange={handleChange} className="input-field mt-2" />
-                  <FieldError>{fieldErrors.nominal_min}</FieldError>
-                </label>
-                <label className="block text-sm font-medium text-gray-700">Maximum nominal
-                  <input type="number" step="any" name="nominal_max" value={formData.nominal_max} onChange={handleChange} className="input-field mt-2" />
-                  <FieldError>{fieldErrors.nominal_max}</FieldError>
-                </label>
-              </div>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700" title={eligibilityDisabled ? eligibilityReason : 'Autoriser ce capteur pour les traitements IA.'}>
-                <input type="checkbox" name="is_ai_eligible" checked={formData.is_ai_eligible} disabled={eligibilityDisabled} onChange={handleChange} /> Éligible pour l’IA
-              </label>
-              {eligibilityDisabled && <p className="text-xs text-gray-500" title={eligibilityReason}>{eligibilityReason}</p>}
-              <FieldError>{fieldErrors.is_ai_eligible}</FieldError>
-            </section>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -290,36 +279,53 @@ export default function CapteurFormPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <section className="border-t pt-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Seuil minimum
-                </label>
-                <input
-                  type="number"
-                  name="seuil_min"
-                  value={formData.seuil_min}
-                  onChange={handleChange}
-                  className="input-field"
-                  step="any"
-                />
-                <FieldError>{fieldErrors.seuil_min}</FieldError>
+                <h2 className="text-base font-semibold text-gray-900">Seuils de mesure</h2>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Seuil maximum
-                </label>
-                <input
-                  type="number"
-                  name="seuil_max"
-                  value={formData.seuil_max}
-                  onChange={handleChange}
-                  className="input-field"
-                  step="any"
-                />
-                <FieldError>{fieldErrors.seuil_max}</FieldError>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Seuil d’alerte minimum
+                  </label>
+                  <input
+                    type="number"
+                    name="seuil_min"
+                    value={formData.seuil_min}
+                    onChange={handleChange}
+                    className="input-field"
+                    step="any"
+                  />
+                  <FieldError>{fieldErrors.seuil_min}</FieldError>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Seuil d’alerte maximum
+                  </label>
+                  <input
+                    type="number"
+                    name="seuil_max"
+                    value={formData.seuil_max}
+                    onChange={handleChange}
+                    className="input-field"
+                    step="any"
+                  />
+                  <FieldError>{fieldErrors.seuil_max}</FieldError>
+                </div>
               </div>
-            </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700" title={eligibilityDisabled ? eligibilityReason : 'Autoriser ce capteur pour les traitements IA.'}>
+                  <input type="checkbox" name="is_ai_eligible" checked={formData.is_ai_eligible} disabled={eligibilityDisabled} onChange={handleChange} /> Éligible pour l’IA
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  Criticité
+                  <select name="criticality" value={formData.criticality} onChange={handleChange} className="input-field w-auto py-2">{CRITICALITIES.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+                  <FieldError>{fieldErrors.criticality}</FieldError>
+                </label>
+              </div>
+              {eligibilityDisabled && <p className="text-xs text-gray-500" title={eligibilityReason}>{eligibilityReason}</p>}
+              <FieldError>{fieldErrors.is_ai_eligible}</FieldError>
+            </section>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

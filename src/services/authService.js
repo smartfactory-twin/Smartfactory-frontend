@@ -9,6 +9,12 @@ export const login = async (email, password) => {
   return data
 }
 
+/** POST /auth/google-login/ — échange un credential Google vérifié par Django. */
+export const loginWithGoogle = async (credential) => {
+  const { data } = await api.post('/auth/google-login/', { credential })
+  return data
+}
+
 /**
  * POST /auth/logout/
  * Invalide le refresh token (blacklist)
@@ -89,6 +95,11 @@ export const updateUserAdmin = async (id, data) => {
  */
 export const listUsers = async (params = {}) => {
   const { data } = await api.get('/auth/users/list/', { params })
+  return data
+}
+
+export const getUserActivityHistory = async (userId) => {
+  const { data } = await api.get(`/auth/users/${userId}/activity/`)
   return data
 }
 

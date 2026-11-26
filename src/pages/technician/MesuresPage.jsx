@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Activity } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TechnicianLayout from '../../components/layout/TechnicianLayout'
@@ -228,9 +228,9 @@ export default function MesuresPage() {
   const [error, setError] = useState(null)
   const [selectedMachine, setSelectedMachine] = useState(() => searchParams.get('machine') || '')
   const [selectedCapteur, setSelectedCapteur] = useState(requestedSensor)
-  const [dateFrom, setDateFrom] = useState(() => toDateTimeLocal(new Date(Date.now() - 24 * 60 * 60 * 1000)))
-  const [dateTo, setDateTo] = useState(() => toDateTimeLocal(new Date()))
-  const [period, setPeriod] = useState('24h')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [period, setPeriod] = useState('all')
   const [page, setPage] = useState(1)
   const [count, setCount] = useState(0)
   const readingIds = useRef(new Set())
@@ -248,6 +248,12 @@ export default function MesuresPage() {
   const selectPeriod = (value) => {
     setPeriod(value)
     if (value === 'custom') return
+    if (value === 'all') {
+      setDateFrom('')
+      setDateTo('')
+      setPage(1)
+      return
+    }
     const durationMs = { '1h': 60 * 60 * 1000, '6h': 6 * 60 * 60 * 1000, '24h': 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 }[value]
     const end = new Date()
     setDateFrom(toDateTimeLocal(new Date(end.getTime() - durationMs)))
@@ -259,9 +265,10 @@ export default function MesuresPage() {
     const fetchMachines = async () => {
       setLoadingMachines(true)
       try {
-        const data = await getMachines({ limit: 200 })
+        const data = await getMachines({ page_size: 200 })
         const list = data?.results ?? data ?? []
         setMachines(list)
+        if (!selectedMachine && list.length) setSelectedMachine(String(list[0].id))
       } catch (err) {
         console.error('Erreur lors du chargement des machines', err)
         setError(err?.response?.data?.detail || "Impossible de charger les machines.")
@@ -277,21 +284,45 @@ export default function MesuresPage() {
     setComparisonSeries([])
     setCapteurs([])
     if (!selectedMachine) return
+    let active = true
     const fetchCapteurs = async () => {
       setLoadingCapteurs(true)
       try {
-        const data = await getCapteurs({ machine: selectedMachine, limit: 200 })
+        // L'API DRF pagine avec `page_size` ; `limit` est ignoré ici.
+        const data = await getCapteurs({ machine: selectedMachine, page_size: 200 })
         const list = data?.results ?? data ?? []
+        if (!active) return
         setCapteurs(list)
+        if (list.length) {
+          const requested = list.find((sensor) => String(sensor.id) === String(requestedSensor) || sensor.identifiant === requestedSensor)
+          let latestMeasuredSensor = null
+          if (!requested) {
+            try {
+              const latest = await getReadings({ 'sensor__machine': selectedMachine, ordering: '-timestamp', page_size: 1 })
+              const latestReading = (latest?.results ?? latest ?? [])[0]
+              const latestSensorId = latestReading?.sensor?.id ?? latestReading?.sensor
+              latestMeasuredSensor = list.find((sensor) => String(sensor.id) === String(latestSensorId))
+            } catch {
+              // La liste des capteurs reste consultable même si la requête de repérage échoue.
+            }
+          }
+          if (!active) return
+          const selected = requested || latestMeasuredSensor || list[0]
+          setSelectedCapteur(String(selected.id))
+        } else {
+          setSelectedCapteur('')
+        }
       } catch (err) {
+        if (!active) return
         console.error('Erreur lors du chargement des capteurs', err)
         setError(err?.response?.data?.detail || "Impossible de charger les capteurs.")
       } finally {
-        setLoadingCapteurs(false)
+        if (active) setLoadingCapteurs(false)
       }
     }
     fetchCapteurs()
-  }, [selectedMachine])
+    return () => { active = false }
+  }, [selectedMachine, requestedSensor])
 
   useEffect(() => {
     const ids = comparisonSensorIds.filter((id) => String(id) !== String(selectedCapteur))
@@ -470,9 +501,9 @@ export default function MesuresPage() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="mr-1 text-xs font-medium text-gray-600">Période :</span>
-          {['1h', '6h', '24h', '7d', '30d', 'custom'].map((value) => (
+          {['all', '1h', '6h', '24h', '7d', '30d', 'custom'].map((value) => (
             <button key={value} type="button" onClick={() => selectPeriod(value)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${period === value ? 'bg-primary-600 text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {value === 'custom' ? 'Personnalisée' : value}
+              {value === 'all' ? 'Tout l’historique' : value === 'custom' ? 'Personnalisée' : value}
             </button>
           ))}
         </div>
@@ -579,12 +610,20 @@ export default function MesuresPage() {
             className="py-10"
           />
         ) : readings.length === 0 ? (
-          <EmptyState
-            icon={Activity}
-            title="Aucune mesure trouvée"
-            description="Aucune mesure n'existe pour ce capteur avec les filtres sélectionnés."
-            className="py-10"
-          />
+          <div className="flex flex-col items-center gap-3 px-5 py-12 text-center">
+            <Activity className="h-8 w-8 text-gray-400" aria-hidden="true" />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">Aucune mesure enregistrée pour ce capteur</h3>
+              <p className="mt-1 max-w-lg text-sm text-gray-500">
+                {dateFrom || dateTo
+                  ? 'Essayez une période plus large ou choisissez « Tout l’historique ». Si aucune mesure n’existe encore, importez-en pour ce capteur.'
+                  : 'Ce capteur ne possède pas encore de mesure enregistrée. Importez des mesures historiques ou sélectionnez un autre capteur.'}
+              </p>
+            </div>
+            <Link to="/capteurs/import-readings" className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-primary-700 hover:bg-gray-50">
+              Importer des mesures
+            </Link>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">

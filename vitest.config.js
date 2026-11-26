@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    pool: 'vmThreads',
     setupFiles: './src/tests/setup.js',
     css: false,
     // Les scénarios navigateur sont exécutés par Playwright.

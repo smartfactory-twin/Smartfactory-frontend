@@ -149,7 +149,8 @@ TEMP-001,2026-10-03T10:02:00Z,67.4`
     setLoading(true)
     resetFeedback()
     try {
-      setResult(await importReadingsJson(JSON.parse(jsonData)))
+      await importReadingsJson(JSON.parse(jsonData))
+      navigate('/capteurs')
     } catch (err) {
       if (err instanceof SyntaxError) {
         setError('JSON invalide: ' + err.message)

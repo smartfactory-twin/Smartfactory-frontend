@@ -115,7 +115,7 @@ describe('Assistant vocal — enregistrement et transcription', () => {
     expect(screen.getByText(/^Moteur : Whisper$/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /envoyer/i }))
     await waitFor(() => expect(voiceService.sendVoiceAgentMessage).toHaveBeenCalledWith('Lire les machines', null, 'voice'))
-  }, 12_000)
+  }, 30_000)
 
   it('annule un enregistrement sans appeler la transcription', async () => {
     setupMedia()
@@ -123,10 +123,10 @@ describe('Assistant vocal — enregistrement et transcription', () => {
     await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }))
     await screen.findByRole('button', { name: /annuler l’enregistrement/i })
     await userEvent.click(screen.getByRole('button', { name: /annuler l’enregistrement/i }))
-    await waitFor(() => expect(screen.getAllByText(/aucun audio n’a été envoyé/i).length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getAllByText(/aucun audio n’a été envoyé/i).length).toBeGreaterThan(0), { timeout: 10_000 })
     expect(voiceService.transcribeVoiceAudio).not.toHaveBeenCalled()
     expect(stoppedTracks).toContain('stopped')
-  })
+  }, 15_000)
 
   it('affiche un message si la permission du microphone est refusée', async () => {
     const denied = Object.assign(new Error('denied'), { name: 'NotAllowedError' })

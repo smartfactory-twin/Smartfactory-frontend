@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Check, Clock3, LoaderCircle, MessageSquare, Mic, Plus, Send, Shield, Square, X } from 'lucide-react'
+import { AlertCircle, Check, Clock3, Download, Headphones, LoaderCircle, MessageSquare, Mic, MoreHorizontal, Pin, Plus, Send, Square, Trash2, X } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TechnicianLayout from '../../components/layout/TechnicianLayout'
 import OperatorLayout from '../../components/layout/OperatorLayout'
@@ -8,7 +8,6 @@ import {
   cancelVoiceProposal,
   confirmVoiceProposal,
   getPendingVoiceProposals,
-  getVoiceCommandHistory,
   sendVoiceAgentMessage,
   transcribeVoiceAudio,
 } from '../../services/voiceService'
@@ -22,18 +21,16 @@ import {
   normalizeActionPhrase,
   selectRecordingMimeType,
 } from './voiceAssistantUtils'
+import useRealtimeVoiceSession from './useRealtimeVoiceSession'
 
 const configuredLimit = Number(import.meta.env.VITE_VOICE_MAX_AUDIO_SECONDS)
 const MAX_RECORDING_SECONDS = Number.isFinite(configuredLimit) && configuredLimit > 0
   ? configuredLimit
   : DEFAULT_MAX_RECORDING_SECONDS
-const EXAMPLES = [
-  'Liste les machines de mon périmètre.',
-  'Quelles alertes sont actives cette semaine ?',
-  'Quelle est la dernière mesure de la pompe POMPE-002 ?',
-  'Crée un ordre de travail correctif pour POMPE-002, priorité haute.',
-]
-const ROLE_LABELS = { ADMIN: 'Administrateur', TECHNICIEN: 'Technicien', OPERATEUR: 'Opérateur' }
+const REALTIME_STATUS_LABELS = {
+  idle: 'Inactif', listening: 'Écoute', speech_detected: 'Parole détectée',
+  transcribing: 'Transcription', thinking: 'Réflexion', speaking: 'L’assistant parle', error: 'Erreur',
+}
 const START_MESSAGE = 'Bonjour. Parlez ou écrivez votre demande. Je peux consulter les données et préparer une action ; toute écriture demande votre confirmation explicite.'
 const SPEECH_CONTROL_PHRASES = new Set(['confirme', 'je confirme', 'annule', 'j annule'])
 
@@ -55,18 +52,82 @@ function formatCountdown(seconds) {
   return `${minutes}:${String(remaining).padStart(2, '0')}`
 }
 
+function downloadGeneratedFile(file) {
+  if (!file?.content_base64 || !file?.filename || !file?.content_type) return false
+  const binary = window.atob(file.content_base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  const url = URL.createObjectURL(new Blob([bytes], { type: file.content_type }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = file.filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return true
+}
+
 function roleAwareError(error, action = 'agent') {
   const code = error?.response?.status
   if (code === 503 && action === 'agent') {
-    return 'L’agent IA est indisponible. Le mode règles avec actions directes est désactivé ; réessayez plus tard. La saisie et la reconnaissance navigateur restent disponibles.'
+    return 'Le service IA est indisponible. Le mode local essaie de répondre aux demandes courantes ; aucune écriture ne sera exécutée sans confirmation.'
   }
   return getVoiceApiErrorMessage(error, action)
+}
+
+function previewLabel(key) {
+  const labels = { alerte: 'Alerte', commentaire: 'Commentaire', commentaire_acquittement: 'Commentaire d’acquittement', machine: 'Machine', capteur: 'Capteur', statut: 'Statut', priorite: 'Priorité', type: 'Type', titre: 'Titre', description: 'Description', rapport: 'Rapport', date: 'Date', reference: 'Référence' }
+  return labels[key] || String(key).replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function PreviewFields({ value, path = '' }) {
+  if (value && typeof value === 'object') {
+    const entries = Array.isArray(value) ? value.map((item, index) => [String(index + 1), item]) : Object.entries(value)
+    if (!entries.length) return <span className="text-slate-400">Aucun détail</span>
+    return <dl className="space-y-2">{entries.map(([key, item]) => {
+      const label = path ? `${path} · ${previewLabel(key)}` : previewLabel(key)
+      return <div key={`${path}-${key}`} className="rounded-lg bg-slate-950/70 p-3"><dt className="mb-1 text-xs font-semibold text-slate-400">{label}</dt><dd className="break-words text-sm text-slate-100">{item && typeof item === 'object' ? <PreviewFields value={item} path={label} /> : <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">{item == null ? 'Non défini' : typeof item === 'boolean' ? (item ? 'Oui' : 'Non') : String(item)}</div>}</dd></div>
+    })}</dl>
+  }
+  return <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">{value == null ? 'Non défini' : String(value)}</div>
+}
+
+function readableResultFields(result) {
+  if (!result || typeof result !== 'object') return []
+  const source = result.result && typeof result.result === 'object' ? result.result : result
+  return [
+    ['Statut', source.statut_label || source.status_label || source.statut || source.status],
+    ['Référence', source.reference || source.numero || source.identifiant || source.code],
+    ['Commentaire', source.commentaire_acquittement || source.commentaire || source.comment],
+    ['Message', source.message || source.detail],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== '')
+}
+
+function ConversationDataTable({ table }) {
+  if (!table?.columns?.length || !Array.isArray(table.rows)) return null
+  return (
+    <section className="mt-3 max-w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70" aria-label={`Tableau ${table.title || 'des résultats'}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-300">{table.title || 'Résultats'}</h3>
+        <span className="text-xs text-slate-400">{table.total ?? table.rows.length} résultat{(table.total ?? table.rows.length) === 1 ? '' : 's'}</span>
+      </div>
+      <div className="max-w-full overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-800 text-left text-xs">
+          <thead className="bg-slate-900 text-slate-400"><tr>{table.columns.map((column) => <th key={column.key} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{column.label}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-800 text-slate-200">{table.rows.length ? table.rows.map((row, index) => <tr key={`${row.identifiant || row.reference || row.timestamp || 'row'}-${index}`} className="hover:bg-slate-900/70">{table.columns.map((column) => <td key={column.key} className="max-w-64 whitespace-nowrap px-3 py-2">{row[column.key] === '' || row[column.key] == null ? '—' : String(row[column.key])}</td>)}</tr>) : <tr><td colSpan={table.columns.length} className="px-3 py-5 text-center text-slate-400">Aucun résultat.</td></tr>}</tbody>
+        </table>
+      </div>
+      {table.truncated && <p className="border-t border-slate-800 px-3 py-2 text-xs text-amber-300">Liste partielle : certains résultats ne sont pas affichés.</p>}
+    </section>
+  )
 }
 
 export default function VocalPage() {
   const { user } = useAuthContext()
   const role = user?.role ?? 'OPERATEUR'
   const Layout = role === 'ADMIN' ? AdminLayout : role === 'TECHNICIEN' ? TechnicianLayout : OperatorLayout
+  const conversationStorageKey = `sf_voice_conversations_${user?.id ?? 'current'}`
 
   const [messages, setMessages] = useState(() => [makeMessage('assistant', START_MESSAGE)])
   const [draft, setDraft] = useState('')
@@ -80,15 +141,17 @@ export default function VocalPage() {
   const [proposalResult, setProposalResult] = useState(null)
   const [proposalError, setProposalError] = useState('')
   const [proposalBusy, setProposalBusy] = useState(false)
-  const [history, setHistory] = useState([])
-  const [historyLoading, setHistoryLoading] = useState(true)
-  const [historyError, setHistoryError] = useState('')
   const [pendingError, setPendingError] = useState('')
   const [agentUnavailable, setAgentUnavailable] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [conversationId, setConversationId] = useState(() => {
     try { return sessionStorage.getItem('sf_voice_conversation_id') || null } catch { return null }
   })
+  const [recentConversations, setRecentConversations] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(conversationStorageKey) || '[]') } catch { return [] }
+  })
+  const [activeConversationKey, setActiveConversationKey] = useState(null)
+  const [openConversationMenuId, setOpenConversationMenuId] = useState(null)
 
   const chatRef = useRef(null)
   const draftRef = useRef(null)
@@ -102,28 +165,20 @@ export default function VocalPage() {
   const proposalLockRef = useRef(false)
   const agentLockRef = useRef(false)
   const mountedRef = useRef(true)
+  const realtimeAssistantMessageRef = useRef(null)
   const autoSendRef = useRef(autoSend)
+  const activeConversationKeyRef = useRef(null)
   autoSendRef.current = autoSend
 
   useEffect(() => {
+    const input = draftRef.current
+    if (!input) return
+    input.style.height = 'auto'
+    input.style.height = `${Math.min(input.scrollHeight, 96)}px`
+  }, [draft])
+
+  useEffect(() => {
     mountedRef.current = true
-    const loadHistory = getVoiceCommandHistory()
-      .then((result) => {
-        const entries = Array.isArray(result) ? result : result?.results || []
-        if (mountedRef.current) setHistory(entries.map((entry) => ({
-          id: entry.id,
-          time: entry.created_at,
-          text: entry.texte,
-          intent: entry.intention || '—',
-          confidence: entry.confiance,
-          result: entry.resultat || '—',
-          user: entry.utilisateur,
-        })))
-      })
-      .catch((error) => {
-        if (mountedRef.current) setHistoryError(roleAwareError(error))
-      })
-      .finally(() => { if (mountedRef.current) setHistoryLoading(false) })
     const restoreProposal = getPendingVoiceProposals()
       .then((result) => {
         const pending = result?.results?.find((item) => item.status === 'pending')
@@ -132,7 +187,6 @@ export default function VocalPage() {
       .catch((error) => { if (mountedRef.current) setPendingError(roleAwareError(error)) })
     return () => {
       mountedRef.current = false
-      void loadHistory
       void restoreProposal
     }
   }, [])
@@ -143,6 +197,35 @@ export default function VocalPage() {
       else sessionStorage.removeItem('sf_voice_conversation_id')
     } catch { /* La conversation reste active en mémoire si le stockage session est bloqué. */ }
   }, [conversationId])
+
+  useEffect(() => {
+    try { localStorage.setItem(conversationStorageKey, JSON.stringify(recentConversations)) } catch { /* L’historique reste disponible en mémoire si le stockage local est bloqué. */ }
+  }, [conversationStorageKey, recentConversations])
+
+  useEffect(() => {
+    if (!activeConversationKey || !messages.some((message) => message.role === 'user')) return
+    const savedMessages = messages.filter((message) => message.status !== 'loading').map((message) => ({
+      id: message.id, role: message.role, text: message.text, time: message.time, status: message.status,
+      displayData: message.displayData,
+    }))
+    const firstUserMessage = savedMessages.find((message) => message.role === 'user')
+    if (!firstUserMessage) return
+    setRecentConversations((current) => {
+      const existing = current.find((item) => item.id === activeConversationKey)
+      const nextConversation = {
+        id: activeConversationKey,
+        title: (firstUserMessage.text || 'Nouvelle conversation').slice(0, 72),
+        updatedAt: new Date().toISOString(),
+        pinned: Boolean(existing?.pinned),
+        serverConversationId: conversationId || existing?.serverConversationId || null,
+        messages: savedMessages,
+      }
+      return [nextConversation, ...current.filter((item) => item.id !== activeConversationKey)]
+        .sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+          || new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+        .slice(0, 40)
+    })
+  }, [messages, activeConversationKey, conversationId])
 
   useEffect(() => {
     if (!chatRef.current) return
@@ -183,7 +266,7 @@ export default function VocalPage() {
   }, [])
 
   const runProposalAction = useCallback(async (action, source = 'button') => {
-    if (!proposalActive || !proposal?.id || proposalLockRef.current) return
+    if (!proposalActive || !proposal?.id || proposalLockRef.current) return { success: false, message: 'La proposition n’est plus disponible.' }
     proposalLockRef.current = true
     setProposalBusy(true)
     setProposalError('')
@@ -195,20 +278,23 @@ export default function VocalPage() {
       const data = action === 'confirm'
         ? await confirmVoiceProposal(proposal.id)
         : await cancelVoiceProposal(proposal.id)
-      const nextProposal = data?.proposal || proposal
+      const nextProposal = data?.proposal || { ...proposal, status: action === 'confirm' ? 'executed' : 'cancelled' }
       setProposal(nextProposal)
       setProposalResult(action === 'confirm' ? data?.result ?? null : null)
+      if (action === 'confirm') window.dispatchEvent(new Event('notifications-updated'))
       const text = action === 'confirm'
         ? 'Action exécutée après votre confirmation explicite.'
         : 'Proposition annulée. Aucune écriture n’a été effectuée.'
       if (source === 'voice') updateMessage(resultMessage.id, { text, status: 'complete' })
       else postAssistantMessage(text)
+      return { success: true, message: action === 'confirm' ? 'C’est fait, l’action est confirmée.' : 'La proposition est annulée.' }
     } catch (error) {
       const code = error?.response?.status
       const responseProposal = error?.response?.data?.proposal
       if (code === 410) setProposal((current) => ({ ...current, status: 'expired' }))
       else if (code === 404) setProposal((current) => ({ ...current, status: 'not_found' }))
       else if (code === 409) setProposal(responseProposal || ((current) => ({ ...current, status: 'already_processed' })))
+      else setProposal((current) => ({ ...current, status: 'failed' }))
       const text = code === 410 ? 'Cette proposition a expiré (410).'
         : code === 409 ? 'Cette proposition a déjà été traitée (409).'
           : code === 404 ? 'Cette proposition est introuvable (404).'
@@ -216,16 +302,74 @@ export default function VocalPage() {
       setProposalError(text)
       if (source === 'voice') updateMessage(resultMessage.id, { text, status: 'error' })
       else postAssistantMessage(text, { status: 'error' })
+      return { success: false, message: text }
     } finally {
       proposalLockRef.current = false
       setProposalBusy(false)
     }
   }, [postAssistantMessage, proposal, proposalActive, updateMessage])
 
+  const realtimeVoice = useRealtimeVoiceSession({
+    getProposal: () => proposal,
+    onDownload: (file) => {
+      postAssistantMessage(`Le fichier ${file.filename} est prêt. Clique sur l’icône de téléchargement pour le récupérer.`, { download: file })
+    },
+    onUserTranscript: (text) => {
+      let localKey = activeConversationKeyRef.current
+      if (!localKey) {
+        localKey = globalThis.crypto?.randomUUID?.() || `conversation-${Date.now()}`
+        activeConversationKeyRef.current = localKey
+        setActiveConversationKey(localKey)
+      }
+      realtimeAssistantMessageRef.current = null
+      setMessages((current) => [...current, makeMessage('user', text, { engine: 'Whisper temps réel' })])
+    },
+    onAssistantSentence: (sentence) => {
+      const currentId = realtimeAssistantMessageRef.current
+      if (currentId) {
+        setMessages((current) => current.map((message) => message.id === currentId
+          ? { ...message, text: `${message.text} ${sentence}`.trim(), status: 'streaming' }
+          : message))
+      } else {
+        const message = makeMessage('assistant', sentence, { status: 'streaming' })
+        realtimeAssistantMessageRef.current = message.id
+        setMessages((current) => [...current, message])
+      }
+    },
+    onAssistantReset: () => {
+      const id = realtimeAssistantMessageRef.current
+      if (id) setMessages((current) => current.filter((message) => message.id !== id))
+      realtimeAssistantMessageRef.current = null
+    },
+    onAssistantDone: (result) => {
+      if (result?.conversation_id) setConversationId(result.conversation_id)
+      if (result?.proposal) {
+        setProposal(result.proposal)
+        setProposalResult(null)
+      }
+      const id = realtimeAssistantMessageRef.current
+      const reply = String(result?.reply || '').trim()
+      if (id && reply) setMessages((current) => current.map((message) => message.id === id
+        ? { ...message, text: reply, displayData: result?.display_data || message.displayData, status: 'complete' }
+        : message))
+      else if (reply) postAssistantMessage(reply, { displayData: result?.display_data })
+      realtimeAssistantMessageRef.current = null
+    },
+    onProposal: (value) => { setProposal(value); setProposalResult(null) },
+    onProposalAction: (action) => runProposalAction(action, 'voice'),
+    onError: (message) => postAssistantMessage(message, { status: 'error' }),
+  })
+
   const sendTextToAgent = useCallback(async (text, source = 'typed') => {
     const cleanText = String(text || '').trim()
     if (!cleanText || agentLockRef.current) return
     agentLockRef.current = true
+    let localConversationKey = activeConversationKeyRef.current
+    if (!localConversationKey) {
+      localConversationKey = globalThis.crypto?.randomUUID?.() || `conversation-${Date.now()}`
+      activeConversationKeyRef.current = localConversationKey
+      setActiveConversationKey(localConversationKey)
+    }
     setAgentBusy(true)
     setCaptureError('')
     setProposalError('')
@@ -233,14 +377,25 @@ export default function VocalPage() {
     const loadingMessage = makeMessage('assistant', 'Réponse en cours…', { status: 'loading' })
     setMessages((current) => [...current, userMessage, loadingMessage])
     try {
-      const result = await sendVoiceAgentMessage(cleanText, conversationId, source === 'typed' ? 'text' : 'voice')
+      let result
+      try {
+        result = await sendVoiceAgentMessage(cleanText, conversationId, source === 'typed' ? 'text' : 'voice')
+      } catch (requestError) {
+        if (requestError?.response?.status !== 410) throw requestError
+        setConversationId(null)
+        try { sessionStorage.removeItem('sf_voice_conversation_id') } catch { /* Le prochain échange crée une conversation neuve. */ }
+        result = await sendVoiceAgentMessage(cleanText, null, source === 'typed' ? 'text' : 'voice')
+      }
       setAgentUnavailable(false)
       if (result?.conversation_id) setConversationId(result.conversation_id)
       if (result?.proposal) {
         setProposal(result.proposal)
         setProposalResult(null)
       }
-      updateMessage(loadingMessage.id, { text: result?.reply || 'Aucune réponse fournie.', status: 'complete' })
+      updateMessage(loadingMessage.id, {
+        text: result?.reply || 'Aucune réponse fournie.', displayData: result?.display_data,
+        download: result?.download || null, status: 'complete',
+      })
     } catch (error) {
       if (error?.response?.status === 503) setAgentUnavailable(true)
       const text = roleAwareError(error, 'agent')
@@ -471,6 +626,8 @@ export default function VocalPage() {
   }, [agentBusy, captureState, draft, draftEngine, handleText])
 
   const newConversation = useCallback(() => {
+    activeConversationKeyRef.current = null
+    setActiveConversationKey(null)
     setConversationId(null)
     setMessages([makeMessage('assistant', START_MESSAGE)])
     setProposal(null)
@@ -480,6 +637,28 @@ export default function VocalPage() {
     setDraft('')
     setDraftEngine('typed')
     draftRef.current?.focus()
+  }, [])
+
+  const toggleConversationPin = useCallback((conversationIdToToggle) => {
+    setRecentConversations((current) => current
+      .map((item) => item.id === conversationIdToToggle ? { ...item, pinned: !item.pinned } : item)
+      .sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+        || new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()))
+    setOpenConversationMenuId(null)
+  }, [])
+
+  const deleteConversation = useCallback((conversationIdToDelete) => {
+    setRecentConversations((current) => current.filter((item) => item.id !== conversationIdToDelete))
+    setOpenConversationMenuId(null)
+    if (activeConversationKeyRef.current === conversationIdToDelete) {
+      activeConversationKeyRef.current = null
+      setActiveConversationKey(null)
+      setConversationId(null)
+      setMessages([makeMessage('assistant', START_MESSAGE)])
+      setProposal(null)
+      setProposalResult(null)
+      setProposalError('')
+    }
   }, [])
 
   const proposalStatusLabel = proposal?.status === 'executed' ? 'Exécutée'
@@ -492,49 +671,68 @@ export default function VocalPage() {
 
   return (
     <Layout pageTitle="Assistant vocal">
-      <main className="mx-auto w-full max-w-7xl space-y-5 px-1 sm:px-2" aria-labelledby="voice-page-title">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 id="voice-page-title" className="text-2xl font-semibold text-slate-900">Assistant vocal</h1>
-            <p className="mt-1 text-sm text-slate-600">Parlez ou écrivez, relisez la transcription, puis envoyez-la à l’assistant IA.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600">
-              <Shield className="h-4 w-4 text-blue-600" />{ROLE_LABELS[role] || role}
-            </span>
-            <button type="button" onClick={newConversation} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <Plus className="h-4 w-4" />Nouvelle conversation
-            </button>
-          </div>
-        </header>
+      <main className="mx-auto w-full max-w-7xl space-y-5 px-1 sm:px-2">
 
         {(captureError || pendingError) && <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{captureError || pendingError}</div>}
         {captureStatus && <p className="sr-only" aria-live="polite">{captureStatus}</p>}
         {pendingError && <p className="sr-only" aria-live="polite">{pendingError}</p>}
         {agentUnavailable && <div role="alert" aria-live="assertive" className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><div><strong>Agent IA indisponible.</strong> Le mode règles avec actions directes est désactivé. Réessayez plus tard ; toute écriture doit continuer à passer par une proposition et une confirmation explicite.</div></div>}
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)]">
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Conversation avec l’assistant">
-            <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
+          <aside className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-slate-100 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-8rem)] lg:max-h-[calc(100vh-8rem)] lg:flex-col" aria-label="Historique des conversations">
+            <button type="button" onClick={newConversation} className="mb-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-600 px-3 text-sm hover:bg-slate-800"><Plus className="h-4 w-4" />Nouvelle conversation</button>
+            <h2 className="px-2 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Conversations récentes</h2>
+            <div className="min-h-0 space-y-1 overflow-y-auto lg:flex-1">
+              {recentConversations.length ? [...recentConversations]
+                .sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+                  || new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+                .map((item) => (
+                  <div key={item.id} className={`relative flex items-center rounded-lg ${activeConversationKey === item.id ? 'bg-slate-800' : 'hover:bg-slate-800'}`}>
+                    <button type="button" onClick={() => { activeConversationKeyRef.current = item.id; setActiveConversationKey(item.id); setMessages(item.messages?.length ? item.messages.map((message) => ({ ...message, time: new Date(message.time) })) : [makeMessage('assistant', START_MESSAGE)]); setConversationId(item.serverConversationId || null); setProposal(null); setProposalResult(null); setOpenConversationMenuId(null) }} className={`min-w-0 flex-1 truncate rounded-lg px-2 py-2 text-left text-sm ${activeConversationKey === item.id ? 'text-white' : 'text-slate-300'}`} title={item.title}>
+                      {item.pinned && <Pin className="mr-1 inline h-3 w-3 text-blue-400" aria-label="Conversation épinglée" />}{item.title}
+                    </button>
+                    <button type="button" aria-label={`Options de ${item.title}`} aria-expanded={openConversationMenuId === item.id} onClick={() => setOpenConversationMenuId((current) => current === item.id ? null : item.id)} className="mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                    {openConversationMenuId === item.id && <div role="menu" aria-label={`Actions pour ${item.title}`} className="absolute right-1 top-10 z-20 min-w-48 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
+                      <button type="button" role="menuitem" onClick={() => toggleConversationPin(item.id)} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
+                        <Pin className="h-4 w-4" />{item.pinned ? 'Désépingler la conversation' : 'Épingler la conversation'}
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => deleteConversation(item.id)} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60">
+                        <Trash2 className="h-4 w-4" />Supprimer la conversation
+                      </button>
+                    </div>}
+                  </div>
+                )) : <p className="px-2 py-3 text-xs text-slate-400">Aucune conversation enregistrée.</p>}
+            </div>
+          </aside>
+          <section className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-sm text-slate-100" aria-label="Conversation avec l’assistant">
+            <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-900 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-blue-600" />
-                <h2 className="font-semibold text-slate-900">Conversation</h2>
+                <h2 className="font-semibold text-slate-100">Conversation</h2>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-300">
                 <input type="checkbox" checked={autoSend} onChange={(event) => setAutoSend(event.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
                 Envoyer automatiquement la transcription
               </label>
             </div>
 
-            <div ref={chatRef} role="log" aria-live="polite" aria-relevant="additions text" className="flex max-h-[min(56vh,620px)] min-h-72 flex-col gap-4 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-5">
+            <div ref={chatRef} role="log" aria-live="polite" aria-relevant="additions text" className="flex max-h-[min(62vh,680px)] min-h-80 flex-col gap-4 overflow-y-auto bg-slate-950 px-4 py-5 sm:px-6">
               {messages.map((message) => (
                 <article key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`} aria-label={message.role === 'user' ? 'Votre message' : 'Réponse de l’assistant'}>
-                  <div className={`max-w-[95%] rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[88%] ${message.role === 'user' ? 'rounded-br-md bg-blue-600 text-white' : message.status === 'error' ? 'rounded-bl-md border border-red-200 bg-red-50 text-red-900' : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'}`}>
+                  <div className={`max-w-[95%] rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[88%] ${message.role === 'user' ? 'rounded-br-md bg-blue-600 text-white' : message.status === 'error' ? 'rounded-bl-md border border-red-900 bg-red-950 text-red-100' : 'rounded-bl-md border border-slate-700 bg-slate-900 text-slate-100'}`}>
                     {message.status === 'loading' && <span className="mb-1 flex items-center gap-2 text-xs text-slate-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />{message.text}</span>}
                     {message.status !== 'loading' && (message.role === 'assistant' ? <SafeMarkdown>{message.text}</SafeMarkdown> : <p className="whitespace-pre-wrap break-words">{message.text}</p>)}
+                    {message.role === 'assistant' && <ConversationDataTable table={message.displayData} />}
+                    {message.role === 'assistant' && message.download && <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2">
+                      <span className="min-w-0 truncate text-xs text-slate-300" title={message.download.filename}>{message.download.filename}</span>
+                      <button type="button" aria-label={`Télécharger ${message.download.filename}`} title="Télécharger le rapport" onClick={() => downloadGeneratedFile(message.download)} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>}
                     <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${message.role === 'user' ? 'text-blue-100' : 'text-slate-500'}`}>
                       <time dateTime={new Date(message.time).toISOString()}>{formatTime(message.time)}</time>
-                      {message.role === 'user' && message.engine && <span className="rounded-full bg-black/10 px-2 py-0.5">{message.engine === 'whisper' ? 'Whisper' : message.engine === 'browser' ? 'Navigateur' : 'Saisie'}</span>}
                     </div>
                   </div>
                 </article>
@@ -542,19 +740,19 @@ export default function VocalPage() {
             </div>
 
             {proposal && (
-              <section className="mx-4 my-4 rounded-xl border border-amber-300 bg-amber-50 p-4 sm:mx-5" aria-labelledby="proposal-title">
+              <section className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" aria-labelledby="proposal-title" role="dialog" aria-modal="true"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl text-slate-100">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <h3 id="proposal-title" className="font-semibold text-slate-900">Action proposée</h3>
-                    <p className="mt-1 text-sm text-slate-700">{proposal.summary || proposal.spoken_summary}</p>
+                    <h3 id="proposal-title" className="font-semibold text-slate-100">Action proposée</h3>
+                    <p className="mt-1 text-sm text-slate-300">{proposal.summary || proposal.spoken_summary}</p>
                   </div>
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">{proposalStatusLabel}</span>
                 </div>
-                {proposal.preview != null && <div className="mt-3">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Aperçu complet de l’écriture</h4>
-                  <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-amber-200 bg-white p-3 text-xs leading-5 text-slate-700">{typeof proposal.preview === 'string' ? proposal.preview : JSON.stringify(proposal.preview, null, 2)}</pre>
-                </div>}
-                {proposalActive && <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-amber-900"><Clock3 className="h-4 w-4" />Expire dans {formatCountdown(secondsRemaining)}</p>}
+                <div className="mt-4 max-h-[45vh] overflow-y-auto rounded-xl border border-slate-700 bg-slate-800/60 p-3" aria-label="Aperçu complet de l’action">
+                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Aperçu complet de l’écriture</h4>
+                  <PreviewFields value={proposal.preview || {}} />
+                </div>
+                {proposalActive && <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-amber-300"><Clock3 className="h-4 w-4" />Expire dans {formatCountdown(secondsRemaining)} · {new Date(proposal.expires_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>}
                 {!proposalActive && proposal.status === 'pending' && <p className="mt-3 text-sm text-red-700">Proposition expirée. Les actions ne sont plus disponibles.</p>}
                 {proposalError && <p role="alert" className="mt-2 text-sm text-red-700">{proposalError}</p>}
                 {proposalActive && <div className="mt-4 flex flex-wrap gap-2">
@@ -565,65 +763,47 @@ export default function VocalPage() {
                     <X className="h-4 w-4" />Annuler
                   </button>
                 </div>}
-                {proposal.status === 'executed' && proposalResult != null && <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"><h4 className="font-semibold">Résultat</h4><pre className="mt-1 whitespace-pre-wrap break-words text-xs">{JSON.stringify(proposalResult, null, 2)}</pre></div>}
-              </section>
+                {proposal.status === 'executed' && <div className="mt-3 rounded-lg border border-emerald-800 bg-emerald-950 p-3 text-sm text-emerald-100"><h4 className="mb-2 font-semibold">Résultat</h4>{readableResultFields(proposalResult).length ? <dl className="space-y-1">{readableResultFields(proposalResult).map(([label, value]) => <div key={label} className="flex flex-wrap gap-x-2"><dt className="font-medium text-emerald-300">{label} :</dt><dd className="whitespace-pre-wrap break-words">{String(value)}</dd></div>)}</dl> : <p>Action confirmée avec succès.</p>}</div>}
+                {proposal.status === 'cancelled' && <p className="mt-3 rounded-lg border border-slate-700 bg-slate-800 p-3 text-sm text-slate-200">Proposition annulée. Aucune écriture n’a été effectuée.</p>}
+                {proposal.status === 'expired' && <p className="mt-3 rounded-lg border border-amber-800 bg-amber-950/50 p-3 text-sm text-amber-200">Cette proposition a expiré. Aucune écriture n’a été effectuée.</p>}
+                {proposal.status === 'already_processed' && <p className="mt-3 rounded-lg border border-amber-800 bg-amber-950/50 p-3 text-sm text-amber-200">Cette proposition a déjà été traitée. Aucune nouvelle écriture n’a été effectuée.</p>}
+                {proposal.status === 'not_found' && <p className="mt-3 rounded-lg border border-red-800 bg-red-950/50 p-3 text-sm text-red-200">Cette proposition est introuvable.</p>}
+                {proposal.status === 'failed' && <p className="mt-3 rounded-lg border border-red-800 bg-red-950/50 p-3 text-sm text-red-200">L’action n’a pas pu être confirmée. Réessayez ou vérifiez son état.</p>}
+                {proposal.status !== 'pending' && <button type="button" onClick={() => setProposal(null)} className="mt-3 rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Fermer</button>}
+              </div></section>
             )}
 
             {agentBusy && <p className="mx-5 mb-2 text-xs text-slate-500" aria-live="polite">L’assistant prépare sa réponse…</p>}
-            <form onSubmit={handleSubmit} className="space-y-3 border-t border-slate-200 p-4 sm:p-5">
+            <form onSubmit={handleSubmit} className="space-y-3 border-t border-slate-800 bg-slate-900 p-4 sm:p-5">
               <label htmlFor="voice-message" className="sr-only">Votre demande vocale ou textuelle</label>
-              <textarea id="voice-message" ref={draftRef} value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} disabled={agentBusy || captureState === 'recording' || captureState === 'transcribing'} placeholder="La transcription s’affichera ici. Relisez ou modifiez-la avant l’envoi…" className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100" />
-              {draft.trim() && <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">Moteur : {draftEngine === 'whisper' ? 'Whisper' : draftEngine === 'browser' ? 'Reconnaissance navigateur' : 'Saisie'}</span>}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap gap-2">
+              <div className="relative rounded-2xl border border-slate-700 bg-slate-950 p-2 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/30">
+                <textarea id="voice-message" ref={draftRef} value={draft} onChange={(event) => { setDraft(event.target.value); setDraftEngine('typed') }} rows={1} disabled={agentBusy || captureState === 'recording' || captureState === 'transcribing'} placeholder="Écrivez ou dictez votre demande…" className="max-h-24 min-h-10 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2 pr-36 text-sm leading-5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-0 disabled:bg-transparent" />
+                <div className="absolute bottom-2 right-2 flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                   {captureState === 'recording' ? <>
-                    <button type="button" onClick={() => stopRecording(false)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400"><Square className="h-4 w-4" />Arrêter</button>
-                    <button type="button" onClick={() => stopRecording(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"><X className="h-4 w-4" />Annuler l’enregistrement</button>
-                  </> : captureState === 'browserListening' ? <button type="button" onClick={cancelBrowserFallback} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700"><X className="h-4 w-4" />Annuler la reconnaissance</button> : <button type="button" onClick={() => void startRecording()} disabled={captureState === 'transcribing' || agentBusy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"><Mic className="h-4 w-4" />{captureState === 'transcribing' ? 'Transcription…' : 'Enregistrer'}</button>}
-                  {captureState === 'transcribing' && <span className="inline-flex items-center gap-2 text-sm text-slate-600" aria-live="polite"><LoaderCircle className="h-4 w-4 animate-spin" />Whisper transcrit l’enregistrement…</span>}
+                    <button type="button" aria-label="Arrêter" title="Arrêter" onClick={() => stopRecording(false)} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-600 text-white"><Square className="h-4 w-4" /></button>
+                    <button type="button" aria-label="Annuler l’enregistrement" title="Annuler" onClick={() => stopRecording(true)} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-600 text-slate-200"><X className="h-4 w-4" /></button>
+                  </> : captureState === 'browserListening' ? <button type="button" aria-label="Annuler la reconnaissance" onClick={cancelBrowserFallback} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-600 text-slate-200"><X className="h-4 w-4" /></button> : <button type="button" aria-label="Enregistrer" title="Enregistrer" onClick={() => void startRecording()} disabled={captureState === 'transcribing' || agentBusy} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-50"><Mic className="h-4 w-4" /></button>}
+                  <button type="button" aria-label={realtimeVoice.sessionActive ? 'Arrêter la conversation vocale' : realtimeVoice.isStarting ? 'Annuler le démarrage vocal' : 'Démarrer une conversation vocale en temps réel'} title={realtimeVoice.sessionActive ? 'Arrêter la conversation vocale' : 'Conversation vocale en temps réel'} disabled={agentBusy || captureState === 'recording' || captureState === 'transcribing'} onClick={() => { if (realtimeVoice.sessionActive || realtimeVoice.isStarting) realtimeVoice.stopSession(); else void realtimeVoice.startSession() }} className={`inline-flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-50 ${realtimeVoice.sessionActive || realtimeVoice.isStarting ? 'bg-red-700 text-white hover:bg-red-600' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+                    {realtimeVoice.sessionActive || realtimeVoice.isStarting ? <Square className="h-4 w-4" /> : <Headphones className="h-4 w-4" />}
+                  </button>
+                  {captureState === 'transcribing' && <span className="text-xs text-slate-400" role="status"><LoaderCircle className="mr-1 inline h-3.5 w-3.5 animate-spin" />Transcription…</span>}
                 </div>
-                <button type="submit" disabled={!draft.trim() || agentBusy || captureState === 'recording' || captureState === 'transcribing'} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"><Send className="h-4 w-4" />Envoyer</button>
+                <button type="submit" aria-label="Envoyer" title="Envoyer" disabled={!draft.trim() || agentBusy || captureState === 'recording' || captureState === 'transcribing'} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"><Send className="h-4 w-4" /></button>
+                </div>
               </div>
-              <div className="flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                 <span aria-live="polite">{captureStatus || (captureState === 'recording' ? 'Écoute en cours…' : 'L’audio n’est conservé ni dans le navigateur après fermeture, ni dans le journal de l’application.')}</span>
                 <span>Durée maximale : {MAX_RECORDING_SECONDS} s</span>
               </div>
+              {(realtimeVoice.sessionActive || realtimeVoice.isStarting || realtimeVoice.status.phase === 'error') && <p className={`text-xs ${realtimeVoice.status.phase === 'error' ? 'text-amber-300' : 'text-slate-400'}`} role="status" aria-live="polite">{realtimeVoice.status.message}</p>}
             </form>
           </section>
 
-          <aside className="space-y-5">
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <h2 className="font-semibold text-slate-900">Exemples de demandes</h2>
-              <div className="mt-3 space-y-2">
-                {EXAMPLES.map((example) => <button key={example} type="button" onClick={() => { setDraft(example); setDraftEngine('typed'); draftRef.current?.focus() }} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-left text-sm text-slate-700 hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500">{example}</button>)}
-              </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">Une demande d’écriture crée une proposition. La saisie automatique ne confirme jamais une écriture.</p>
-            </section>
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <h2 className="font-semibold text-slate-900">États du service</h2>
-              <p className="mt-2 text-sm text-slate-600">Transcription Whisper, puis envoi manuel du texte à l’agent. En cas d’indisponibilité, la reconnaissance navigateur (fr-FR) ou la saisie texte restent accessibles.</p>
-              <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">HTTPS est requis pour le microphone, sauf sur localhost. Toute écriture demande une confirmation par bouton ou par la commande vocale exacte « confirme » / « annule » lorsqu’une proposition non expirée est affichée.</div>
-            </section>
-          </aside>
         </div>
-
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="voice-history-title">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 sm:px-5">
-            <div><h2 id="voice-history-title" className="font-semibold text-slate-900">Historique vocal existant</h2><p className="mt-1 text-xs text-slate-500">Texte et résultat uniquement. Aucun audio, jeton ou paramètre de configuration affiché.</p></div>
-          </div>
-          {historyError && <p role="alert" className="px-5 py-3 text-sm text-amber-800">{historyError}</p>}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Heure</th>{role === 'ADMIN' && <th className="px-4 py-3">Utilisateur</th>}<th className="px-4 py-3">Texte</th><th className="px-4 py-3">Intention</th><th className="px-4 py-3">Confiance</th><th className="px-4 py-3">Résultat</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {historyLoading ? <tr><td colSpan={role === 'ADMIN' ? 6 : 5} className="px-4 py-8 text-center text-slate-500">Chargement de l’historique…</td></tr>
-                  : history.length === 0 ? <tr><td colSpan={role === 'ADMIN' ? 6 : 5} className="px-4 py-8 text-center text-slate-500">Aucune ancienne commande enregistrée.</td></tr>
-                    : history.map((entry) => <tr key={entry.id || `${entry.time}-${entry.text}`} className="align-top"><td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatTime(entry.time)}</td>{role === 'ADMIN' && <td className="px-4 py-3 text-slate-700">{entry.user || '—'}</td>}<td className="max-w-sm whitespace-pre-wrap break-words px-4 py-3 text-slate-800">{entry.text}</td><td className="px-4 py-3 text-slate-700">{entry.intent}</td><td className="px-4 py-3 text-slate-600">{entry.confidence == null ? '—' : `${(entry.confidence * 100).toFixed(0)}%`}</td><td className="max-w-sm whitespace-pre-wrap break-words px-4 py-3 text-slate-600">{entry.result}</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </main>
     </Layout>
   )
 }
+
+

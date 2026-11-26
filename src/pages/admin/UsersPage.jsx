@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import {
   UserPlus, Download, Upload, Search, X, Loader2,
@@ -410,6 +411,7 @@ function DeleteConfirmModal({ user: u, onClose, onConfirm, loading }) {
 
 /* ── Page principale ───────────────────────────────────────────────── */
 export default function UsersPage() {
+  const navigate = useNavigate()
   const { user: currentUser } = useAuthContext()
   const [users, setUsers]           = useState([])
   const [loading, setLoading]       = useState(true)
@@ -480,7 +482,6 @@ export default function UsersPage() {
       {showAddModal    && <AddUserModal      onClose={() => setShowAdd(false)} onSuccess={handleAddSuccess} />}
       {showImport      && <CsvImportUsersModal onClose={() => setShowImport(false)} onSuccess={() => { fetchUsers(); setSuccess('Import terminé. Les nouveaux utilisateurs ont reçu leur email.'); setTimeout(() => setSuccess(null), 6000) }} />}
       {editTarget      && <EditUserModal     user={editTarget} onClose={() => setEditTarget(null)} onSuccess={() => { setEditTarget(null); fetchUsers(); setSuccess('Utilisateur mis à jour.'); setTimeout(() => setSuccess(null), 4000) }} />}
-      {detailUser      && <UserDetailModal   user={detailUser} onClose={() => setDetailUser(null)} />}
       {deleteTarget    && <DeleteConfirmModal user={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDeleteConfirm} loading={deleting} />}
 
       {/* En-tête */}
@@ -559,7 +560,7 @@ export default function UsersPage() {
                     <div className="flex items-center justify-center gap-1.5">
                       {/* Voir détails */}
                       <button
-                        onClick={() => setDetailUser(u)}
+                        onClick={() => navigate(`/admin/users/${u.id}`)}
                         title="Voir les détails"
                         aria-label={`Voir les détails de ${u.prenom} ${u.nom}`}
                         className="sf-action-icon sf-action-view p-1.5 rounded-lg text-gray-400"

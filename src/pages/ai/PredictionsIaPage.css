@@ -23,3 +23,4 @@
 .sf-ai-primary:hover:not(:disabled){filter:brightness(.96);box-shadow:0 4px 12px color-mix(in srgb,var(--sf-accent) 25%,transparent)}
 .sf-ai-detail-button:hover{color:var(--sf-accent);border-color:var(--sf-accent)}
 .sf-ai-page select:focus,.sf-ai-page input:focus{border-color:var(--sf-accent);outline:3px solid color-mix(in srgb,var(--sf-accent) 15%,transparent);outline-offset:0}
+.sf-ai-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-top:1px solid var(--sf-line-soft);color:var(--sf-muted);font-size:12px}.sf-ai-pagination>div{display:flex;gap:8px}.sf-ai-pagination button{min-height:34px;padding:0 12px;border:1px solid var(--sf-line);border-radius:7px;background:var(--sf-surface);color:var(--sf-ink-soft);font:inherit}.sf-ai-pagination button:disabled{opacity:.45;cursor:not-allowed}.sf-ai-pagination button:not(:disabled):hover{border-color:var(--sf-accent);color:var(--sf-accent)}
