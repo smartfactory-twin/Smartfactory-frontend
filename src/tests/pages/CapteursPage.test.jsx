@@ -175,4 +175,30 @@ describe('CapteursPage — Module 3 (UC-08)', () => {
     })
     confirmSpy.mockRestore()
   })
+
+  it('affiche les pages de capteurs et gère les limites de navigation', async () => {
+    const sensors = Array.from({ length: 11 }, (_, index) => ({
+      ...SENSORS[0], id: index + 1, identifiant: `TEMP-${index + 1}`,
+      nom: `Capteur ${index + 1}`,
+    }))
+    sensorService.getCapteurs.mockResolvedValueOnce({ count: sensors.length, results: sensors })
+    renderPage()
+    expect(await screen.findByText('Capteur 1')).toBeInTheDocument()
+    expect(screen.queryByText('Capteur 11')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Précédent' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Suivant' }))
+    expect(screen.getByText('Capteur 11')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Suivant' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Précédent' }))
+    expect(screen.getByText('Capteur 1')).toBeInTheDocument()
+  })
+
+  it('affiche l’état vide filtré sans contrôles de pagination', async () => {
+    renderPage()
+    await screen.findByText('Température Ligne A')
+    await userEvent.type(screen.getByPlaceholderText(/rechercher/i), 'inexistant')
+    expect(await screen.findByText('Aucun capteur trouvé.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Précédent' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Suivant' })).not.toBeInTheDocument()
+  })
 })

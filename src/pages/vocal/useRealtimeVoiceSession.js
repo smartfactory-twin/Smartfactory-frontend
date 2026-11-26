@@ -31,7 +31,11 @@ function apiErrorMessage(error) {
     const retryAfter = Number(error?.response?.headers?.['retry-after'])
     return `Limite de demandes atteinte. Écoute en pause${Number.isFinite(retryAfter) && retryAfter > 0 ? ` pendant ${Math.ceil(retryAfter)} secondes` : ''}.`
   }
+  if (status === 503 && error?.response?.data?.code === 'provider_rate_limited') {
+    return 'Le fournisseur IA est temporairement limité. Attendez quelques secondes, puis réessayez.'
+  }
   if (status === 503) return 'Le service vocal est temporairement indisponible. Vous pouvez réessayer ou utiliser le mode texte.'
+  if (status === 406) return 'Le serveur a refusé le format du flux vocal. Rechargez la page puis réessayez.'
   return 'La conversation vocale a rencontré une erreur. Réessayez ou utilisez le mode texte.'
 }
 
@@ -59,7 +63,10 @@ export default function useRealtimeVoiceSession({
   refs.current.callbacks = { getProposal, onUserTranscript, onAssistantSentence, onAssistantReset, onAssistantDone, onProposal, onDownload, onProposalAction, onStatus, onError, hallucinations }
   refs.current.isActive ??= false
   refs.current.isSpeaking ??= false
+  refs.current.ttsActive ??= false
   refs.current.isProcessing ??= false
+  refs.current.capturingInterruption ??= false
+  refs.current.interruptionCandidateSince ??= null
   refs.current.vad ??= createVadState()
   refs.current.conversationId ??= null
 
@@ -82,6 +89,8 @@ export default function useRealtimeVoiceSession({
     state.abortController = null
     state.transcriptionController?.abort()
     state.transcriptionController = null
+    state.browserRecognition?.abort?.()
+    state.browserRecognition = null
     state.speechQueue?.clear()
     state.speechQueue = null
     if (state.animationFrame) cancelAnimationFrame(state.animationFrame)
@@ -99,21 +108,26 @@ export default function useRealtimeVoiceSession({
     state.recordingChunks = []
     state.audioSource?.disconnect?.()
     state.analyser?.disconnect?.()
+    state.silentOutput?.disconnect?.()
     state.audioSource = null
     state.analyser = null
+    state.silentOutput = null
     state.audioContext?.close?.().catch?.(() => {})
     state.audioContext = null
     state.stream?.getTracks?.().forEach((track) => track.stop())
     state.stream = null
     state.vad = createVadState()
     state.isSpeaking = false
+    state.ttsActive = false
+    state.capturingInterruption = false
+    state.interruptionCandidateSince = null
     publishStatus('idle', reason)
   }, [publishStatus])
 
   const say = useCallback((text) => {
     const queue = refs.current.speechQueue
     if (!queue || !text) return
-    refs.current.isSpeaking = true
+    refs.current.ttsActive = true
     queue.enqueue(text)
   }, [])
 
@@ -147,6 +161,7 @@ export default function useRealtimeVoiceSession({
     state.abortController = controller
     let completed = false
     let streamedSpeech = false
+    let terminalError = ''
     const handleSentence = (speech) => {
       if (!speech || controller.signal.aborted) return
       streamedSpeech = true
@@ -179,28 +194,40 @@ export default function useRealtimeVoiceSession({
       if (controller.signal.aborted || !state.isActive) return
       state.speechQueue?.clear()
       state.isSpeaking = false
+      state.capturingInterruption = false
       streamedSpeech = false
       refs.current.callbacks.onAssistantReset()
-      publishStatus('thinking', 'Le flux vocal est indisponible ; je réessaie sans diffusion…')
-      try {
-        const result = await sendVoiceAgentMessage(cleanText, state.conversationId, 'voice')
-        if (result?.conversation_id) state.conversationId = result.conversation_id
-        if (result?.proposal) handleProposal(result.proposal)
-        if (result?.download) refs.current.callbacks.onDownload(result.download)
-        const speech = result?.speech || ''
-        if (speech) handleSentence(speech)
-        refs.current.callbacks.onAssistantDone(result)
-        completed = true
-      } catch (fallbackError) {
-        if (controller.signal.aborted || !state.isActive) return
-        const message = apiErrorMessage(fallbackError || streamError)
-        refs.current.callbacks.onError(message)
-        say(message)
+      const status = streamError?.response?.status
+      const terminalStatus = status === 401 || status === 403 || status === 429
+      if (terminalStatus) {
+        terminalError = apiErrorMessage(streamError)
+        refs.current.callbacks.onError(terminalError)
+        publishStatus('error', terminalError)
+        say(terminalError)
+      } else {
+        publishStatus('thinking', 'Le flux vocal est indisponible ; je réessaie sans diffusion…')
+        try {
+          const result = await sendVoiceAgentMessage(cleanText, state.conversationId, 'voice')
+          if (result?.conversation_id) state.conversationId = result.conversation_id
+          if (result?.proposal) handleProposal(result.proposal)
+          if (result?.download) refs.current.callbacks.onDownload(result.download)
+          const speech = result?.speech || ''
+          if (speech) handleSentence(speech)
+          refs.current.callbacks.onAssistantDone(result)
+          completed = true
+        } catch (fallbackError) {
+          if (controller.signal.aborted || !state.isActive) return
+          const message = apiErrorMessage(fallbackError || streamError)
+          terminalError = message
+          refs.current.callbacks.onError(message)
+          publishStatus('error', message)
+          say(message)
+        }
       }
     } finally {
       if (state.abortController === controller) state.abortController = null
       state.isProcessing = false
-      if (state.isActive) publishStatus(streamedSpeech ? 'speaking' : 'listening', completed ? 'Réponse terminée. Je continue l’écoute.' : 'Écoute en cours.')
+      if (state.isActive && !terminalError) publishStatus(streamedSpeech ? 'speaking' : 'listening', completed ? 'Réponse terminée. Je continue l’écoute.' : 'Écoute en cours.')
     }
   }, [publishStatus, say])
 
@@ -225,20 +252,36 @@ export default function useRealtimeVoiceSession({
     const startToken = (refs.current.startToken || 0) + 1
     refs.current.startToken = startToken
     let mediaStream
+    let audioContext
     try {
+      // Resume the audio graph directly from the user's initial click; later network awaits
+      // can outlive the browser's transient user-activation window.
+      audioContext = new window.AudioContext({ latencyHint: 'interactive' })
+      const contextResume = audioContext.resume?.()
       const config = await getVoiceSessionConfig()
-      if (refs.current.startToken !== startToken) return
-      const maximumSeconds = Math.max(1, Number(config?.max_seconds) || 300)
-      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       if (refs.current.startToken !== startToken) {
-        mediaStream.getTracks?.().forEach((track) => track.stop())
+        audioContext.close?.().catch?.(() => {})
         return
       }
-      const context = new window.AudioContext()
+      const maximumSeconds = Math.max(1, Number(config?.max_seconds) || 300)
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
+      if (refs.current.startToken !== startToken) {
+        mediaStream.getTracks?.().forEach((track) => track.stop())
+        audioContext.close?.().catch?.(() => {})
+        return
+      }
+      const context = audioContext
+      await contextResume
+      if (context.state === 'suspended') await context.resume()
       const analyser = context.createAnalyser()
       analyser.fftSize = 1024
       const source = context.createMediaStreamSource(mediaStream)
+      const silentOutput = context.createGain()
+      silentOutput.gain.value = 0
       source.connect(analyser)
+      // Keep the analyser pulled by the audio graph without playing microphone audio.
+      analyser.connect(silentOutput)
+      silentOutput.connect(context.destination)
 
       const state = refs.current
       state.isActive = true
@@ -248,6 +291,7 @@ export default function useRealtimeVoiceSession({
       state.audioContext = context
       state.audioSource = source
       state.analyser = analyser
+      state.silentOutput = silentOutput
       state.sessionStartedAt = Date.now()
       state.lastActivityAt = Date.now()
       state.vad = createVadState()
@@ -256,9 +300,10 @@ export default function useRealtimeVoiceSession({
       state.speechQueue = createSpeechQueue({
         synthesis: window.speechSynthesis,
         Utterance: window.SpeechSynthesisUtterance,
-        onStart: () => { state.isSpeaking = true; publishStatus('speaking', 'L’assistant parle. Parlez clairement pour l’interrompre.') },
+        onStart: () => { state.isSpeaking = true; state.ttsActive = true; publishStatus('speaking', 'L’assistant parle. Vous pouvez l’interrompre en parlant.') },
         onEnd: () => {
           state.isSpeaking = false
+          state.ttsActive = false
           if (state.isActive && !state.abortController) publishStatus('listening', 'Micro ouvert. Vous pouvez parler.')
         },
       })
@@ -276,6 +321,8 @@ export default function useRealtimeVoiceSession({
       const beginRecording = (interrupted = false) => {
         if (!state.isActive || state.recorder?.state === 'recording') return
         if (interrupted) {
+          state.capturingInterruption = true
+          state.interruptionCandidateSince = null
           state.speechQueue?.clear()
           state.abortController?.abort()
           state.abortController = null
@@ -304,6 +351,7 @@ export default function useRealtimeVoiceSession({
           state.recordingDuration = 0
           state.recordingSpeechDuration = 0
           state.detectedSpeechDuration = 0
+          state.capturingInterruption = false
           const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || 'audio/webm' })
           if (!state.isActive || !isUsableAudioSegment(duration, blob.size, limits)) {
             if (state.isActive) publishStatus('listening', 'Phrase trop courte ou silencieuse ignorée. Je continue l’écoute.')
@@ -321,16 +369,46 @@ export default function useRealtimeVoiceSession({
           } catch (error) {
             state.isProcessing = false
             if (!state.isActive) return
-            if (error?.response?.status === 429) {
-              const delay = Math.max(1, Number(error?.response?.headers?.['retry-after']) || 60)
-              publishStatus('error', apiErrorMessage(error))
-              state.pauseTimer = window.setTimeout(() => {
-                state.pauseTimer = null
-                if (state.isActive) publishStatus('listening', 'Le délai est passé. Vous pouvez parler à nouveau.')
-              }, delay * 1000)
+            const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
+            if (Recognition) {
+              const recognition = new Recognition()
+              state.browserRecognition = recognition
+              state.isProcessing = true
+              recognition.lang = 'fr-FR'
+              recognition.continuous = false
+              recognition.interimResults = false
+              recognition.onresult = (event) => {
+                const recognized = String(event.results?.[0]?.[0]?.transcript || '').trim()
+                state.browserRecognition = null
+                state.isProcessing = false
+                if (!state.isActive || !recognized) return
+                state.lastActivityAt = Date.now()
+                publishStatus('thinking', 'Transcription navigateur reçue. Je traite votre demande…')
+                state.isProcessing = true
+                void processTranscript(recognized).finally(() => { state.isProcessing = false })
+              }
+              recognition.onerror = () => {
+                state.browserRecognition = null
+                state.isProcessing = false
+                if (state.isActive) publishStatus('listening', 'Whisper est indisponible. Vous pouvez parler à nouveau ou saisir votre demande.')
+              }
+              recognition.onend = () => {
+                if (state.browserRecognition !== recognition) return
+                state.browserRecognition = null
+                state.isProcessing = false
+                if (state.isActive) publishStatus('listening', 'Whisper est indisponible. Vous pouvez parler à nouveau ou saisir votre demande.')
+              }
+              try {
+                recognition.start()
+                publishStatus('listening', 'Whisper est indisponible ; reconnaissance navigateur activée.')
+              } catch {
+                state.browserRecognition = null
+                state.isProcessing = false
+                publishStatus('listening', 'La reconnaissance navigateur n’a pas démarré. Vous pouvez saisir votre demande.')
+              }
             } else {
               const message = apiErrorMessage(error)
-              publishStatus('error', message)
+              publishStatus('listening', `${message} La saisie texte reste disponible.`)
               refs.current.callbacks.onError(message)
             }
           } finally {
@@ -351,23 +429,32 @@ export default function useRealtimeVoiceSession({
         if (!state.isActive) return
         analyser.getByteTimeDomainData(state.audioBuffer)
         const level = calculateRms(state.audioBuffer)
-        if (state.isSpeaking) {
-          const started = observeVad(state.vad, level, Date.now(), {
-            speechThreshold: limits.interruptionThreshold,
-            silenceMs: limits.silenceMs,
-          })
-          if (started === 'start') beginRecording(true)
-          else if (state.vad.startedAt != null && level < limits.interruptionThreshold) {
-            const finished = observeVad(state.vad, 0, Date.now(), {
-              speechThreshold: limits.interruptionThreshold,
-              silenceMs: limits.silenceMs,
-            })
-            if (finished?.type === 'finish') {
-              state.detectedSpeechDuration = finished.durationMs
-              finishRecording()
+        if (state.ttsActive) {
+          const now = Date.now()
+          if (level >= limits.interruptionThreshold) {
+            state.interruptionCandidateSince ??= now
+            // Require a brief continuous voice signal to avoid cancelling TTS on a click or pop.
+            if (now - state.interruptionCandidateSince >= 120) {
+              const started = observeVad(state.vad, level, now, {
+                speechThreshold: limits.interruptionThreshold,
+                silenceMs: limits.silenceMs,
+              })
+              if (started === 'start') beginRecording(true)
+            }
+          } else {
+            state.interruptionCandidateSince = null
+            if (state.vad.startedAt != null) {
+              const finished = observeVad(state.vad, 0, now, {
+                speechThreshold: limits.interruptionThreshold,
+                silenceMs: limits.silenceMs,
+              })
+              if (finished?.type === 'finish') {
+                state.detectedSpeechDuration = finished.durationMs
+                finishRecording()
+              }
             }
           }
-        } else if (state.pauseTimer == null && !state.isProcessing) {
+        } else if (state.pauseTimer == null && (!state.isProcessing || state.capturingInterruption)) {
           const event = observeVad(state.vad, level, Date.now(), limits)
           if (event === 'start') {
             state.lastActivityAt = Date.now()
@@ -375,6 +462,7 @@ export default function useRealtimeVoiceSession({
           } else if (event?.type === 'finish') {
             state.lastActivityAt = Date.now()
             state.detectedSpeechDuration = event.durationMs
+            state.capturingInterruption = false
             finishRecording()
           }
         }
@@ -386,6 +474,7 @@ export default function useRealtimeVoiceSession({
       if (refs.current.startToken !== startToken) return
       refs.current.isStarting = false
       setIsStarting(false)
+      audioContext?.close?.().catch?.(() => {})
       mediaStream?.getTracks?.().forEach((track) => track.stop())
       const message = error?.name === 'NotAllowedError'
         ? 'Accès au microphone refusé. Autorisez le microphone dans le navigateur.'
@@ -410,3 +499,4 @@ export default function useRealtimeVoiceSession({
 
   return { status, transcript, sessionActive, isStarting, micOpen, startSession, stopSession }
 }
+

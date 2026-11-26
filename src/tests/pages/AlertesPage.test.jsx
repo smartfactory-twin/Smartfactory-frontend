@@ -235,4 +235,21 @@ describe('AlertesPage', () => {
 
     expect(await screen.findByText(/aucune alerte/i)).toBeInTheDocument()
   })
+
+  it('parcourt les pages de notifications et respecte les limites', async () => {
+    const notifications = Array.from({ length: 6 }, (_, index) => ({
+      ...NOTIFICATIONS[0], id: 100 + index, titre: `Notification ${index + 1}`,
+      message: `Message ${index + 1}`,
+    }))
+    notificationService.getNotifications.mockResolvedValueOnce({ count: notifications.length, results: notifications })
+    renderPage('ADMIN')
+    expect(await screen.findByText('Notification 1')).toBeInTheDocument()
+    expect(screen.queryByText('Notification 6')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Précédent' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Suivant' }))
+    expect(screen.getByText('Notification 6')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Suivant' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Précédent' }))
+    expect(screen.getByText('Notification 1')).toBeInTheDocument()
+  })
 })

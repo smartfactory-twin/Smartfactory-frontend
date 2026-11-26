@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, ArrowRight } from 'lucide-react'
@@ -17,12 +17,71 @@ const ROLE_REDIRECTS = {
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { login } = useAuthContext()
+  const { login, loginWithGoogle } = useAuthContext()
+  const googleButtonRef = useRef(null)
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || ''
 
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState(null)
   const [forceReset, setForceReset]     = useState(null) // { uid, token }
+  const [googleLoading, setGoogleLoading] = useState(false)
+
+  const handleGoogleCredential = useCallback(async (response) => {
+    if (!response?.credential) return
+    setGoogleLoading(true)
+    setError(null)
+    try {
+      const result = await loginWithGoogle(response.credential)
+      navigate(ROLE_REDIRECTS[result.role] || '/dashboard', { replace: true })
+    } catch (err) {
+      setError(err.response?.data?.error || 'Connexion Google impossible. Réessayez ou utilisez votre e-mail.')
+    } finally {
+      setGoogleLoading(false)
+    }
+  }, [loginWithGoogle, navigate])
+
+  useEffect(() => {
+    if (!googleClientId) return undefined
+    let cancelled = false
+    const renderGoogleButton = () => {
+      if (cancelled || !googleButtonRef.current || !window.google?.accounts?.id) return
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleGoogleCredential,
+        auto_select: false,
+      })
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'rectangular',
+        width: Math.max(240, Math.min(googleButtonRef.current.clientWidth || 360, 400)),
+        locale: 'fr',
+      })
+    }
+
+    let script = document.querySelector('script[data-google-identity]')
+    if (window.google?.accounts?.id) {
+      renderGoogleButton()
+    } else {
+      if (!script) {
+        script = document.createElement('script')
+        script.src = 'https://accounts.google.com/gsi/client'
+        script.async = true
+        script.defer = true
+        script.dataset.googleIdentity = 'true'
+        document.head.appendChild(script)
+      }
+      script.addEventListener('load', renderGoogleButton)
+    }
+
+    return () => {
+      cancelled = true
+      script?.removeEventListener('load', renderGoogleButton)
+    }
+  }, [googleClientId, handleGoogleCredential])
 
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: { email: '', password: '', remember: false },
@@ -155,6 +214,16 @@ export default function LoginPage() {
           {!loading && <ArrowRight className="h-4 w-4" />}
         </Button>
       </form>
+
+      {googleClientId && (
+        <div className="mt-6">
+          <div className="relative mb-5 flex items-center justify-center">
+            <span className="absolute inset-x-0 border-t border-gray-200" />
+            <span className="relative bg-white px-3 text-xs text-gray-400">ou continuer avec</span>
+          </div>
+          <div ref={googleButtonRef} className={`flex min-h-10 justify-center ${googleLoading ? 'pointer-events-none opacity-60' : ''}`} aria-label="Connexion avec Google" />
+        </div>
+      )}
 
       {/* Support */}
       <p className="mt-6 text-center text-sm text-gray-400">

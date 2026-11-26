@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getAiReadiness } from '../../services/aiPredictionService'
 
 const ALLOWED_ROLES = ['ADMIN', 'TECHNICIEN']
@@ -9,6 +9,8 @@ export default function AiReadinessSection({ role }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 10
 
   useEffect(() => {
     if (!allowed) return
@@ -24,6 +26,9 @@ export default function AiReadinessSection({ role }) {
 
   const criteria = data?.criteria || {}
   const machines = data?.machines || []
+  const totalPages = Math.max(1, Math.ceil(machines.length / pageSize))
+  const visibleMachines = useMemo(() => machines.slice((page - 1) * pageSize, page * pageSize), [machines, page])
+  useEffect(() => { setPage(1) }, [data])
   const criteriaRows = [
     ['Historique minimum', criteria.min_history_days == null ? '—' : `${criteria.min_history_days} jours`],
     ['Mesures valides minimum', criteria.min_valid_measures ?? '—'],
@@ -38,13 +43,13 @@ export default function AiReadinessSection({ role }) {
       <div className="sf-ai-readiness-criteria"><strong>Critères de disponibilité</strong>{criteriaRows.map(([label, value]) => <span key={label}>{label} : <b>{value}</b></span>)}</div>
       <p className="sf-ai-method">Le taux de valeurs manquantes est estimé entre la première et la dernière mesure reçue.</p>
       {machines.length === 0 ? <p className="sf-ai-readiness-empty">Aucune machine n’est disponible pour évaluer la préparation IA.</p> : <div className="sf-ai-table-wrap"><table><thead><tr><th>Machine</th><th>Capteurs éligibles</th><th>Mesures valides</th><th>Historique</th><th>Valeurs manquantes</th><th>Statut</th><th>Blocages</th></tr></thead><tbody>
-        {machines.map((machine) => <tr key={machine.machine_id}>
+        {visibleMachines.map((machine) => <tr key={machine.machine_id}>
           <td>{machine.machine} <small>{machine.machine_identifiant}</small></td>
           <td>{machine.eligible_sensor_count ?? '—'}</td><td>{machine.valid_measure_count ?? '—'}</td><td>{history(machine.history_days)}</td><td>{missingRate(machine.missing_rate_percent)}</td>
           <td><span className={`sf-ai-state ${machine.ready_for_training ? 'state-actif' : 'state-non_entraine'}`}>{machine.ready_for_training || machine.status === 'ready' ? 'Prête' : 'Non prête'}</span></td>
           <td>{machine.blocking_reasons?.length ? <ul>{machine.blocking_reasons.map((reason, index) => <li key={`${machine.machine_id}-${index}`}>{reason}</li>)}</ul> : 'Aucun blocage signalé.'}</td>
         </tr>)}
-      </tbody></table></div>}
+      </tbody></table><div className="sf-ai-pagination"><span>Page {page} / {totalPages} · {machines.length} machine{machines.length > 1 ? 's' : ''}</span><div><button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Précédent</button><button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>Suivant</button></div></div></div>}
     </>}
   </section>
 }

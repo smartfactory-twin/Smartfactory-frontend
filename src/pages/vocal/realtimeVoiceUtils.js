@@ -1,11 +1,12 @@
 import { getExplicitProposalAction, normalizeActionPhrase } from './voiceAssistantUtils'
 
 export const REALTIME_VOICE_LIMITS = Object.freeze({
-  speechThreshold: 0.035,
-  interruptionThreshold: 0.4,
-  silenceMs: 900,
-  minimumSpeechMs: 450,
-  minimumAudioBytes: 1200,
+  speechThreshold: 0.03,
+  // A short hold avoids reacting to clicks while allowing a normal speaking voice to interrupt.
+  interruptionThreshold: 0.055,
+  silenceMs: 700,
+  minimumSpeechMs: 350,
+  minimumAudioBytes: 900,
   prolongedSilenceMs: 60_000,
   speechChunkChars: 220,
 })
@@ -16,7 +17,7 @@ export const WHISPER_SILENCE_HALLUCINATIONS = Object.freeze([
   'merci d avoir regarde cette video',
   'sous titres realises par la communaute',
   'sous titrage realise par la communaute',
-  'abonnez vous',
+  'abonnez vous',SpeechRecognition
 ])
 
 export function isSpeechSynthesisAvailable(targetWindow = globalThis.window) {

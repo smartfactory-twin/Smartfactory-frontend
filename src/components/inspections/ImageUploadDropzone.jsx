@@ -110,7 +110,7 @@ export default function ImageUploadDropzone({
   return (
     <section className="sf-inspection-upload">
       <div className="sf-inspection-upload-heading"><div><b>Photos à inspecter</b><small>Une série peut contenir jusqu’à {maxFiles} photos · {maxMb} Mo par photo</small></div>
-        <div className="sf-inspection-upload-actions"><button type="button" onClick={() => inputRef.current?.click()} disabled={disabled}><UploadCloud />Ajouter des fichiers</button><button type="button" onClick={cameraOpen ? closeCamera : openCamera} disabled={disabled}><Camera />{cameraOpen ? 'Fermer la caméra' : 'Prendre une photo'}</button></div>
+        <div className="sf-inspection-upload-actions"><button type="button" onClick={cameraOpen ? closeCamera : openCamera} disabled={disabled}><Camera />{cameraOpen ? 'Fermer la caméra' : 'Prendre une photo'}</button></div>
       </div>
       {localError && <p role="alert" className="sf-inspection-error">{localError}</p>}
       {cameraError && <p role="alert" className="sf-inspection-error">{cameraError}</p>}

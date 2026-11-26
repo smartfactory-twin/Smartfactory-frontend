@@ -15,6 +15,10 @@ vi.mock('../../services/equipementService', () => ({
   importHierarchyCsv: vi.fn(),
 }))
 
+vi.mock('../../components/layout/AdminLayout', () => ({ default: ({ children }) => <div>{children}</div> }))
+vi.mock('../../components/layout/TechnicianLayout', () => ({ default: ({ children }) => <div>{children}</div> }))
+vi.mock('../../components/layout/OperatorLayout', () => ({ default: ({ children }) => <div>{children}</div> }))
+
 function renderHierarchiePage(role = 'ADMIN') {
   const ctxValue = {
     user: { id: 1, email: 'admin@smartfactory.fr', role },

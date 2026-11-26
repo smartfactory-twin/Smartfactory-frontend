@@ -71,7 +71,9 @@ export async function streamVoiceAgentMessage(message, conversationId, {
     signal,
     headers: {
       'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
+      // DRF negotiates an API renderer before returning the StreamingHttpResponse.
+      // Accept JSON for that negotiation while still consuming the SSE response body.
+      Accept: 'application/json, text/event-stream',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
@@ -104,7 +106,9 @@ export async function streamVoiceAgentMessage(message, conversationId, {
       result = data
       onDone(data)
     } else if (event.event === 'error') {
-      throw makeVoiceHttpError(503, { code: data.code || 'stream_failed' })
+      const error = makeVoiceHttpError(503, { code: data.code || 'stream_failed' })
+      error.voiceStreamError = true
+      throw error
     }
   }
 

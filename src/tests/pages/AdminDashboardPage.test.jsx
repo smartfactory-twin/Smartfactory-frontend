@@ -3,8 +3,8 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { AuthContext } from '../../context/AuthContext'
 import DashboardPage from '../../pages/admin/DashboardPage'
-import { getUsines, getMachines } from '../../services/machineService'
-import { getAlertStats, getAlerts } from '../../services/alertService'
+import { getUsines, getMachineStatusCounts } from '../../services/machineService'
+import { getAlertDashboardStats, getAlerts } from '../../services/alertService'
 import { listUsers } from '../../services/authService'
 import { getUsineHierarchie } from '../../services/equipementService'
 
@@ -14,11 +14,11 @@ vi.mock('../../components/layout/AdminLayout', () => ({
 
 vi.mock('../../services/machineService', () => ({
   getUsines: vi.fn(),
-  getMachines: vi.fn(),
+  getMachineStatusCounts: vi.fn(),
 }))
 
 vi.mock('../../services/alertService', () => ({
-  getAlertStats: vi.fn(),
+  getAlertDashboardStats: vi.fn(),
   getAlerts: vi.fn(),
 }))
 
@@ -38,20 +38,17 @@ describe('Admin Dashboard', () => {
     ] })
     getUsineHierarchie.mockImplementation((id) => Promise.resolve({ id, nom: `Usine ${id}`, zones: [], machines: [] }))
     getAlerts.mockResolvedValue({ count: 0, results: [] })
-    getMachines.mockImplementation(({ statut }) => Promise.resolve({
-      count: { NORMAL: 6, DEGRADE: 2, CRITIQUE: 1, HORS_LIGNE: 1 }[statut],
-      results: [],
-    }))
+    getMachineStatusCounts.mockResolvedValue({
+      total: 10,
+      par_statut: { NORMAL: 6, DEGRADE: 2, CRITIQUE: 1, HORS_LIGNE: 1 },
+    })
     listUsers.mockResolvedValue({ count: 5, results: [] })
-    getAlertStats.mockImplementation((params) => Promise.resolve(
-      params
-        ? { total: 2 }
-        : {
-            actives: 3,
-            critiques: 1,
-            par_niveau: { CRITIQUE: 2, MAJEURE: 3, MINEURE: 4, INFORMATION: 1 },
-          }
-    ))
+    getAlertDashboardStats.mockResolvedValue({
+      actives: 3,
+      critiques: 1,
+      par_niveau: { CRITIQUE: 2, MAJEURE: 3, MINEURE: 4, INFORMATION: 1 },
+      par_jour: [],
+    })
   })
 
   it('affiche des indicateurs et graphiques calculés depuis les statistiques API', async () => {
@@ -74,6 +71,7 @@ describe('Admin Dashboard', () => {
     expect(screen.getByRole('img', { name: /Répartition de 10 alertes par niveau/ })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /équipements par statut/ })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /alertes déclenchées chaque jour/ })).toBeInTheDocument()
-    expect(getAlertStats).toHaveBeenCalledTimes(8)
+    expect(getAlertDashboardStats).toHaveBeenCalledTimes(1)
+    expect(getMachineStatusCounts).toHaveBeenCalledTimes(1)
   })
 })

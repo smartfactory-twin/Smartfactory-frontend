@@ -12,6 +12,7 @@ export const getAlert = async (id) => {
 
 export const acknowledgeAlert = async (id, commentaire) => {
   const { data } = await api.post(`/alertes/${id}/acquitter/`, { commentaire })
+  window.dispatchEvent(new Event('notifications-updated'))
   return data
 }
 
@@ -22,6 +23,11 @@ export const prepareOtFromAlert = async (id) => {
 
 export const getAlertStats = async (params = {}) => {
   const { data } = await api.get('/alertes/statistiques/', { params })
+  return data
+}
+
+export const getAlertDashboardStats = async (params = {}) => {
+  const { data } = await api.get('/alertes/tableau-de-bord/', { params })
   return data
 }
 

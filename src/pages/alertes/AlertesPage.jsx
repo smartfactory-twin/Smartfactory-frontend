@@ -54,6 +54,7 @@ export default function AlertesPage() {
 
   const [alerts, setAlerts] = useState([])
   const [notifications, setNotifications] = useState([])
+  const [notificationPage, setNotificationPage] = useState(1)
   const [unreadCount, setUnreadCount] = useState(0)
   const [machines, setMachines] = useState([])
   const [loading, setLoading] = useState(true)
@@ -70,6 +71,9 @@ export default function AlertesPage() {
   const [filterMachine, setFilterMachine] = useState('')
   const [filterPeriod, setFilterPeriod] = useState('')
   const [error, setError] = useState('')
+  const notificationsPerPage = 5
+  const notificationPages = Math.max(1, Math.ceil(notifications.length / notificationsPerPage))
+  const visibleNotifications = notifications.slice((notificationPage - 1) * notificationsPerPage, notificationPage * notificationsPerPage)
 
   const loadMachineOptions = async () => {
     try {
@@ -89,6 +93,7 @@ export default function AlertesPage() {
         getNotificationCount(),
       ])
       setNotifications(data.results ?? data ?? [])
+      setNotificationPage(1)
       setUnreadCount(counter?.non_lues ?? 0)
     } catch {
       setNotifications([])
@@ -147,6 +152,12 @@ export default function AlertesPage() {
     if (requestedAlertId) openAlertDetail(requestedAlertId)
   }, [requestedAlertId])
 
+  useEffect(() => {
+    if (!submitMessage) return undefined
+    const timer = window.setTimeout(() => setSubmitMessage(''), 5000)
+    return () => window.clearTimeout(timer)
+  }, [submitMessage])
+
   const handleNotificationClick = async (notification) => {
     if (!notification?.alerte) return
     await openAlertDetail(notification.alerte)
@@ -202,6 +213,9 @@ export default function AlertesPage() {
     try {
       const payload = await prepareOtFromAlert(selectedAlert.id)
       setSubmitMessage(payload.message || `OT #${payload.ordre?.id} créé pour ${payload.machine_nom ?? 'la machine'}.`)
+      setDetailOpen(false)
+      setSelectedAlert(null)
+      if (requestedAlertId) setSearchParams({}, { replace: true })
     } catch {
       setSubmitMessage('Préparation de l’OT impossible pour le moment.')
     }
@@ -362,7 +376,7 @@ export default function AlertesPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {notifications.map((notification) => (
+                {visibleNotifications.map((notification) => (
                   <button
                     key={notification.id}
                     type="button"
@@ -383,6 +397,15 @@ export default function AlertesPage() {
                     </div>
                   </button>
                 ))}
+                {notificationPages > 1 && (
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500">
+                    <span>Page {notificationPage} / {notificationPages}</span>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setNotificationPage(page => Math.max(1, page - 1))} disabled={notificationPage === 1} className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-40">Précédent</button>
+                      <button type="button" onClick={() => setNotificationPage(page => Math.min(notificationPages, page + 1))} disabled={notificationPage === notificationPages} className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-40">Suivant</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </aside>

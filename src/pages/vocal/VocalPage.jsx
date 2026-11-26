@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Check, Clock3, Headphones, LoaderCircle, MessageSquare, Mic, Plus, Send, Square, X } from 'lucide-react'
+import { AlertCircle, Check, Clock3, Download, Headphones, LoaderCircle, MessageSquare, Mic, MoreHorizontal, Pin, Plus, Send, Square, Trash2, X } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TechnicianLayout from '../../components/layout/TechnicianLayout'
 import OperatorLayout from '../../components/layout/OperatorLayout'
@@ -71,15 +71,9 @@ function downloadGeneratedFile(file) {
 function roleAwareError(error, action = 'agent') {
   const code = error?.response?.status
   if (code === 503 && action === 'agent') {
-    return 'L’agent IA est indisponible. Le mode règles avec actions directes est désactivé ; réessayez plus tard. La saisie et la reconnaissance navigateur restent disponibles.'
+    return 'Le service IA est indisponible. Le mode local essaie de répondre aux demandes courantes ; aucune écriture ne sera exécutée sans confirmation.'
   }
   return getVoiceApiErrorMessage(error, action)
-}
-
-const ENGINE_LABELS = {
-  whisper: 'Moteur : Whisper',
-  browser: 'Moteur : Reconnaissance navigateur',
-  typed: 'Moteur : Saisie',
 }
 
 function previewLabel(key) {
@@ -138,7 +132,6 @@ export default function VocalPage() {
   const [messages, setMessages] = useState(() => [makeMessage('assistant', START_MESSAGE)])
   const [draft, setDraft] = useState('')
   const [draftEngine, setDraftEngine] = useState('typed')
-  const [lastEngine, setLastEngine] = useState('typed')
   const [autoSend, setAutoSend] = useState(false)
   const [captureState, setCaptureState] = useState('idle')
   const [captureStatus, setCaptureStatus] = useState('')
@@ -158,6 +151,7 @@ export default function VocalPage() {
     try { return JSON.parse(localStorage.getItem(conversationStorageKey) || '[]') } catch { return [] }
   })
   const [activeConversationKey, setActiveConversationKey] = useState(null)
+  const [openConversationMenuId, setOpenConversationMenuId] = useState(null)
 
   const chatRef = useRef(null)
   const draftRef = useRef(null)
@@ -175,6 +169,13 @@ export default function VocalPage() {
   const autoSendRef = useRef(autoSend)
   const activeConversationKeyRef = useRef(null)
   autoSendRef.current = autoSend
+
+  useEffect(() => {
+    const input = draftRef.current
+    if (!input) return
+    input.style.height = 'auto'
+    input.style.height = `${Math.min(input.scrollHeight, 96)}px`
+  }, [draft])
 
   useEffect(() => {
     mountedRef.current = true
@@ -215,10 +216,14 @@ export default function VocalPage() {
         id: activeConversationKey,
         title: (firstUserMessage.text || 'Nouvelle conversation').slice(0, 72),
         updatedAt: new Date().toISOString(),
+        pinned: Boolean(existing?.pinned),
         serverConversationId: conversationId || existing?.serverConversationId || null,
         messages: savedMessages,
       }
-      return [nextConversation, ...current.filter((item) => item.id !== activeConversationKey)].slice(0, 40)
+      return [nextConversation, ...current.filter((item) => item.id !== activeConversationKey)]
+        .sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+          || new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+        .slice(0, 40)
     })
   }, [messages, activeConversationKey, conversationId])
 
@@ -307,7 +312,7 @@ export default function VocalPage() {
   const realtimeVoice = useRealtimeVoiceSession({
     getProposal: () => proposal,
     onDownload: (file) => {
-      if (downloadGeneratedFile(file)) postAssistantMessage(`Le fichier ${file.filename} est prêt et a été téléchargé.`)
+      postAssistantMessage(`Le fichier ${file.filename} est prêt. Clique sur l’icône de téléchargement pour le récupérer.`, { download: file })
     },
     onUserTranscript: (text) => {
       let localKey = activeConversationKeyRef.current
@@ -372,17 +377,25 @@ export default function VocalPage() {
     const loadingMessage = makeMessage('assistant', 'Réponse en cours…', { status: 'loading' })
     setMessages((current) => [...current, userMessage, loadingMessage])
     try {
-      const result = await sendVoiceAgentMessage(cleanText, conversationId, source === 'typed' ? 'text' : 'voice')
+      let result
+      try {
+        result = await sendVoiceAgentMessage(cleanText, conversationId, source === 'typed' ? 'text' : 'voice')
+      } catch (requestError) {
+        if (requestError?.response?.status !== 410) throw requestError
+        setConversationId(null)
+        try { sessionStorage.removeItem('sf_voice_conversation_id') } catch { /* Le prochain échange crée une conversation neuve. */ }
+        result = await sendVoiceAgentMessage(cleanText, null, source === 'typed' ? 'text' : 'voice')
+      }
       setAgentUnavailable(false)
       if (result?.conversation_id) setConversationId(result.conversation_id)
       if (result?.proposal) {
         setProposal(result.proposal)
         setProposalResult(null)
       }
-      if (result?.download && downloadGeneratedFile(result.download)) {
-        postAssistantMessage(`Le fichier ${result.download.filename} est prêt et a été téléchargé.`)
-      }
-      updateMessage(loadingMessage.id, { text: result?.reply || 'Aucune réponse fournie.', displayData: result?.display_data, status: 'complete' })
+      updateMessage(loadingMessage.id, {
+        text: result?.reply || 'Aucune réponse fournie.', displayData: result?.display_data,
+        download: result?.download || null, status: 'complete',
+      })
     } catch (error) {
       if (error?.response?.status === 503) setAgentUnavailable(true)
       const text = roleAwareError(error, 'agent')
@@ -432,7 +445,6 @@ export default function VocalPage() {
         }
         setDraft(transcript)
         setDraftEngine('browser')
-        setLastEngine('browser')
         setCaptureStatus('Reconnaissance navigateur terminée. Vérifiez ou modifiez le texte avant l’envoi.')
         draftRef.current?.focus()
         if (autoSendRef.current || SPEECH_CONTROL_PHRASES.has(normalizeActionPhrase(transcript))) {
@@ -481,7 +493,6 @@ export default function VocalPage() {
       }
       setDraft(transcript)
       setDraftEngine(engineType)
-      setLastEngine(engineType)
       setCaptureState('idle')
       setCaptureStatus('Transcription terminée. Vérifiez ou modifiez le texte avant l’envoi.')
       draftRef.current?.focus()
@@ -611,7 +622,6 @@ export default function VocalPage() {
     const engine = draftEngine
     setDraft('')
     setDraftEngine('typed')
-    setLastEngine('typed')
     void handleText(text, engine)
   }, [agentBusy, captureState, draft, draftEngine, handleText])
 
@@ -627,6 +637,28 @@ export default function VocalPage() {
     setDraft('')
     setDraftEngine('typed')
     draftRef.current?.focus()
+  }, [])
+
+  const toggleConversationPin = useCallback((conversationIdToToggle) => {
+    setRecentConversations((current) => current
+      .map((item) => item.id === conversationIdToToggle ? { ...item, pinned: !item.pinned } : item)
+      .sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+        || new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()))
+    setOpenConversationMenuId(null)
+  }, [])
+
+  const deleteConversation = useCallback((conversationIdToDelete) => {
+    setRecentConversations((current) => current.filter((item) => item.id !== conversationIdToDelete))
+    setOpenConversationMenuId(null)
+    if (activeConversationKeyRef.current === conversationIdToDelete) {
+      activeConversationKeyRef.current = null
+      setActiveConversationKey(null)
+      setConversationId(null)
+      setMessages([makeMessage('assistant', START_MESSAGE)])
+      setProposal(null)
+      setProposalResult(null)
+      setProposalError('')
+    }
   }, [])
 
   const proposalStatusLabel = proposal?.status === 'executed' ? 'Exécutée'
@@ -647,11 +679,31 @@ export default function VocalPage() {
         {agentUnavailable && <div role="alert" aria-live="assertive" className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><div><strong>Agent IA indisponible.</strong> Le mode règles avec actions directes est désactivé. Réessayez plus tard ; toute écriture doit continuer à passer par une proposition et une confirmation explicite.</div></div>}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
-          <aside className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-slate-100" aria-label="Historique des conversations">
+          <aside className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-slate-100 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-8rem)] lg:max-h-[calc(100vh-8rem)] lg:flex-col" aria-label="Historique des conversations">
             <button type="button" onClick={newConversation} className="mb-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-600 px-3 text-sm hover:bg-slate-800"><Plus className="h-4 w-4" />Nouvelle conversation</button>
             <h2 className="px-2 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Conversations récentes</h2>
-            <div className="max-h-[70vh] space-y-1 overflow-y-auto">
-              {recentConversations.length ? recentConversations.map((item) => <button key={item.id} type="button" onClick={() => { activeConversationKeyRef.current = item.id; setActiveConversationKey(item.id); setMessages(item.messages?.length ? item.messages.map((message) => ({ ...message, time: new Date(message.time) })) : [makeMessage('assistant', START_MESSAGE)]); setConversationId(item.serverConversationId || null); setProposal(null); setProposalResult(null) }} className={`w-full truncate rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-800 ${activeConversationKey === item.id ? 'bg-slate-800 text-white' : 'text-slate-300'}`} title={item.title}>{item.title}</button>) : <p className="px-2 py-3 text-xs text-slate-400">Aucune conversation enregistrée.</p>}
+            <div className="min-h-0 space-y-1 overflow-y-auto lg:flex-1">
+              {recentConversations.length ? [...recentConversations]
+                .sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+                  || new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+                .map((item) => (
+                  <div key={item.id} className={`relative flex items-center rounded-lg ${activeConversationKey === item.id ? 'bg-slate-800' : 'hover:bg-slate-800'}`}>
+                    <button type="button" onClick={() => { activeConversationKeyRef.current = item.id; setActiveConversationKey(item.id); setMessages(item.messages?.length ? item.messages.map((message) => ({ ...message, time: new Date(message.time) })) : [makeMessage('assistant', START_MESSAGE)]); setConversationId(item.serverConversationId || null); setProposal(null); setProposalResult(null); setOpenConversationMenuId(null) }} className={`min-w-0 flex-1 truncate rounded-lg px-2 py-2 text-left text-sm ${activeConversationKey === item.id ? 'text-white' : 'text-slate-300'}`} title={item.title}>
+                      {item.pinned && <Pin className="mr-1 inline h-3 w-3 text-blue-400" aria-label="Conversation épinglée" />}{item.title}
+                    </button>
+                    <button type="button" aria-label={`Options de ${item.title}`} aria-expanded={openConversationMenuId === item.id} onClick={() => setOpenConversationMenuId((current) => current === item.id ? null : item.id)} className="mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                    {openConversationMenuId === item.id && <div role="menu" aria-label={`Actions pour ${item.title}`} className="absolute right-1 top-10 z-20 min-w-48 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
+                      <button type="button" role="menuitem" onClick={() => toggleConversationPin(item.id)} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
+                        <Pin className="h-4 w-4" />{item.pinned ? 'Désépingler la conversation' : 'Épingler la conversation'}
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => deleteConversation(item.id)} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60">
+                        <Trash2 className="h-4 w-4" />Supprimer la conversation
+                      </button>
+                    </div>}
+                  </div>
+                )) : <p className="px-2 py-3 text-xs text-slate-400">Aucune conversation enregistrée.</p>}
             </div>
           </aside>
           <section className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-sm text-slate-100" aria-label="Conversation avec l’assistant">
@@ -673,6 +725,12 @@ export default function VocalPage() {
                     {message.status === 'loading' && <span className="mb-1 flex items-center gap-2 text-xs text-slate-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />{message.text}</span>}
                     {message.status !== 'loading' && (message.role === 'assistant' ? <SafeMarkdown>{message.text}</SafeMarkdown> : <p className="whitespace-pre-wrap break-words">{message.text}</p>)}
                     {message.role === 'assistant' && <ConversationDataTable table={message.displayData} />}
+                    {message.role === 'assistant' && message.download && <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2">
+                      <span className="min-w-0 truncate text-xs text-slate-300" title={message.download.filename}>{message.download.filename}</span>
+                      <button type="button" aria-label={`Télécharger ${message.download.filename}`} title="Télécharger le rapport" onClick={() => downloadGeneratedFile(message.download)} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>}
                     <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${message.role === 'user' ? 'text-blue-100' : 'text-slate-500'}`}>
                       <time dateTime={new Date(message.time).toISOString()}>{formatTime(message.time)}</time>
                     </div>
@@ -718,9 +776,9 @@ export default function VocalPage() {
             {agentBusy && <p className="mx-5 mb-2 text-xs text-slate-500" aria-live="polite">L’assistant prépare sa réponse…</p>}
             <form onSubmit={handleSubmit} className="space-y-3 border-t border-slate-800 bg-slate-900 p-4 sm:p-5">
               <label htmlFor="voice-message" className="sr-only">Votre demande vocale ou textuelle</label>
-              <div className="relative rounded-2xl border border-slate-700 bg-slate-950 p-2 focus-within:border-slate-500">
-                <textarea id="voice-message" ref={draftRef} value={draft} onChange={(event) => { setDraft(event.target.value); setDraftEngine('typed'); setLastEngine('typed') }} rows={3} disabled={agentBusy || captureState === 'recording' || captureState === 'transcribing'} placeholder="Écrivez ou dictez votre demande…" className="w-full resize-none border-0 bg-transparent px-3 py-2.5 pb-14 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-0 disabled:bg-transparent" />
-                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+              <div className="relative rounded-2xl border border-slate-700 bg-slate-950 p-2 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/30">
+                <textarea id="voice-message" ref={draftRef} value={draft} onChange={(event) => { setDraft(event.target.value); setDraftEngine('typed') }} rows={1} disabled={agentBusy || captureState === 'recording' || captureState === 'transcribing'} placeholder="Écrivez ou dictez votre demande…" className="max-h-24 min-h-10 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2 pr-36 text-sm leading-5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-0 disabled:bg-transparent" />
+                <div className="absolute bottom-2 right-2 flex items-center gap-1">
                   <div className="flex items-center gap-2">
                   {captureState === 'recording' ? <>
                     <button type="button" aria-label="Arrêter" title="Arrêter" onClick={() => stopRecording(false)} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-600 text-white"><Square className="h-4 w-4" /></button>
@@ -736,7 +794,6 @@ export default function VocalPage() {
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                 <span aria-live="polite">{captureStatus || (captureState === 'recording' ? 'Écoute en cours…' : 'L’audio n’est conservé ni dans le navigateur après fermeture, ni dans le journal de l’application.')}</span>
-                <span className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1 text-slate-300" data-testid="transcription-engine">{ENGINE_LABELS[lastEngine] || ENGINE_LABELS.typed}</span>
                 <span>Durée maximale : {MAX_RECORDING_SECONDS} s</span>
               </div>
               {(realtimeVoice.sessionActive || realtimeVoice.isStarting || realtimeVoice.status.phase === 'error') && <p className={`text-xs ${realtimeVoice.status.phase === 'error' ? 'text-amber-300' : 'text-slate-400'}`} role="status" aria-live="polite">{realtimeVoice.status.message}</p>}
@@ -748,3 +805,5 @@ export default function VocalPage() {
     </Layout>
   )
 }
+
+

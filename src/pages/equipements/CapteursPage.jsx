@@ -26,6 +26,8 @@ export default function CapteursPage() {
   const [filterType, setFilterType] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterAiEligible, setFilterAiEligible] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 10
 
   const fetchData = async () => {
     setLoading(true)
@@ -68,6 +70,8 @@ export default function CapteursPage() {
     const matchesAi = !filterAiEligible || String(Boolean(c.is_ai_eligible)) === filterAiEligible
     return matchesSearch && matchesMachine && matchesType && matchesStatus && matchesAi
   })
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const visibleCapteurs = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const sensorTypes = [
     { value: 'TEMPERATURE', label: 'Température' },
@@ -181,7 +185,7 @@ export default function CapteursPage() {
         ) : (
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="sf-sensor-table min-w-[1100px] w-full table-fixed divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capteur</th>
@@ -190,43 +194,43 @@ export default function CapteursPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fréquence</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Seuils</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profil IA</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profil IA</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filtered.map((c) => (
+                  {visibleCapteurs.map((c) => (
                     <tr key={c.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <div className="text-sm font-medium text-gray-900">{c.nom}</div>
-                          <div className="text-sm text-gray-500 font-mono">{c.identifiant}</div>
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <div className="break-words text-sm font-medium leading-5 text-gray-900">{c.nom}</div>
+                          <div className="break-all text-xs text-gray-500 font-mono leading-4">{c.identifiant}</div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <td className="px-4 py-4 align-top">
+                        <span className="inline-flex max-w-full items-center justify-center whitespace-normal break-words rounded-full bg-blue-100 px-2.5 py-1 text-center text-xs font-medium leading-4 text-blue-800">
                           {sensorTypes.find(t => t.value === c.type_capteur)?.label || c.type_capteur}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{c.machine_nom}</div>
-                        <div className="text-sm text-gray-500 font-mono">{c.machine_identifiant}</div>
+                      <td className="px-4 py-4 align-top">
+                        <div className="break-words text-sm leading-5 text-gray-900">{c.machine_nom || '—'}</div>
+                        <div className="mt-1 break-all text-xs leading-4 text-gray-500 font-mono">{c.machine_identifiant || ''}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.unite}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.frequence_mesure}s</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 align-top whitespace-nowrap text-sm text-gray-900">{c.unite}</td>
+                      <td className="px-4 py-4 align-top whitespace-nowrap text-sm text-gray-900">{c.frequence_mesure}s</td>
+                      <td className="px-4 py-4 align-top whitespace-normal break-words text-sm text-gray-900">
                         {formatNullableThreshold(c.seuil_min)} / {formatNullableThreshold(c.seuil_max)} {c.unite}
                       </td>
-                      <td className="px-6 py-4 text-sm"><div className="flex flex-col items-start gap-1"><span className="rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-xs">{c.sensor_role || 'other'}</span><span className="rounded-full bg-amber-50 text-amber-800 px-2 py-0.5 text-xs">{c.criticality || 'medium'}</span><SensorAiEligibilityBadge sensor={c} /></div></td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top text-sm"><div className="flex max-w-full flex-wrap items-center gap-1"><span className="rounded-full bg-blue-50 text-blue-700 px-2 py-1 text-[11px] leading-none">{c.sensor_role || 'other'}</span><span className="rounded-full bg-amber-50 text-amber-800 px-2 py-1 text-[11px] leading-none">{c.criticality || 'medium'}</span><SensorAiEligibilityBadge sensor={c} /></div></td>
+                      <td className="px-4 py-4 align-top whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           c.actif ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                         }`}>
                           {c.actif ? 'Actif' : 'Inactif'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                      <td className="px-4 py-4 align-top whitespace-nowrap text-right text-sm font-medium space-x-2">
                         <button
                           onClick={() => navigate(`/capteurs/${c.id}`)}
                           className="sf-action-icon sf-action-view"
@@ -263,6 +267,7 @@ export default function CapteursPage() {
                 </div>
               )}
             </div>
+            {filtered.length > 0 && <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-gray-500"><span>Page {page} / {totalPages} · {filtered.length} capteur{filtered.length > 1 ? 's' : ''}</span><div className="flex gap-2"><button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-40">Précédent</button><button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-40">Suivant</button></div></div>}
           </div>
         )}
       </div>

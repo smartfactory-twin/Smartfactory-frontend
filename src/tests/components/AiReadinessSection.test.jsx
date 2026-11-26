@@ -28,4 +28,22 @@ describe('AiReadinessSection', () => {
     render(<AiReadinessSection role="ADMIN" />)
     expect(await screen.findByText(/Aucune machine n’est disponible/)).toBeInTheDocument()
   })
+
+  it('parcourt les pages et désactive les contrôles aux limites', async () => {
+    const machines = Array.from({ length: 11 }, (_, index) => ({
+      machine_id: index + 1, machine: `Machine ${index + 1}`, machine_identifiant: `M-${index + 1}`,
+      eligible_sensor_count: 1, valid_measure_count: 100, history_days: 8,
+      missing_rate_percent: 0, ready_for_training: true, blocking_reasons: [],
+    }))
+    getAiReadiness.mockResolvedValueOnce({ criteria: {}, machines })
+    render(<AiReadinessSection role="ADMIN" />)
+    expect(await screen.findByText('Machine 1')).toBeInTheDocument()
+    expect(screen.queryByText('Machine 11')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Précédent' })).toBeDisabled()
+    await (await import('@testing-library/user-event')).default.click(screen.getByRole('button', { name: 'Suivant' }))
+    expect(screen.getByText('Machine 11')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Suivant' })).toBeDisabled()
+    await (await import('@testing-library/user-event')).default.click(screen.getByRole('button', { name: 'Précédent' }))
+    expect(screen.getByText('Machine 1')).toBeInTheDocument()
+  })
 })

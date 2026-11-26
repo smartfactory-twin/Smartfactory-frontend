@@ -1,6 +1,7 @@
 import api from './api'
 
 export const getMachines       = (params = {}) => api.get('/equipements/machines/', { params }).then(r => r.data)
+export const getMachineStatusCounts = () => api.get('/equipements/machines/statistiques/').then(r => r.data)
 export const getMachine        = (id)          => api.get(`/equipements/machines/${id}/`).then(r => r.data)
 export const createMachine     = (formData)    => api.post('/equipements/machines/', formData, { headers: { 'Content-Type': undefined } }).then(r => r.data)
 export const updateMachine     = (id, data)    => {

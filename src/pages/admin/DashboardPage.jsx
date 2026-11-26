@@ -6,9 +6,9 @@ import {
 import AdminLayout from '../../components/layout/AdminLayout'
 import Alert from '../../components/common/Alert'
 import { useAuthContext } from '../../context/AuthContext'
-import { getUsines, getMachines } from '../../services/machineService'
+import { getUsines, getMachineStatusCounts } from '../../services/machineService'
 import { getUsineHierarchie } from '../../services/equipementService'
-import { getAlertStats, getAlerts } from '../../services/alertService'
+import { getAlertDashboardStats, getAlerts } from '../../services/alertService'
 import { listUsers } from '../../services/authService'
 
 const MACHINE_STATUSES = [
@@ -52,6 +52,7 @@ function lastSevenDays() {
     const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1)
     return {
       label: start.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', ''),
+      dateKey: [start.getFullYear(), String(start.getMonth() + 1).padStart(2, '0'), String(start.getDate()).padStart(2, '0')].join('-'),
       params: {
         'date_declenchement__gte': start.toISOString(),
         'date_declenchement__lte': new Date(end.getTime() - 1).toISOString(),
@@ -82,34 +83,32 @@ const MACHINE_STATUS_LABELS = {
 }
 
 function FactoryPlan({ plants, loading }) {
-  if (loading) return <div className="sf-dashboard-empty">Chargement de la structure de l’usine…</div>
-  if (!plants.length) return <div className="sf-dashboard-empty">Aucune usine ni structure disponible.</div>
-  return <div className="sf-factory-list">
-    {plants.map((plant) => {
-      const zones = plant.zones ?? []
-      const machineCount = zones.reduce((total, zone) => total + (zone.lignes ?? []).reduce((lineTotal, line) => lineTotal + (line.machines?.length ?? 0), 0), 0)
-      return <section className="sf-factory" key={plant.id}>
-        <header className="sf-factory-heading"><Building2 aria-hidden="true" /><div><b>{plant.nom}</b><small>{plant.adresse || 'Site industriel'}</small></div><span>{zones.length} zone{zones.length === 1 ? '' : 's'} · {machineCount} machine{machineCount === 1 ? '' : 's'}</span></header>
-        {zones.length ? <div className="sf-zone-grid">{zones.map((zone) => <section className="sf-zone" key={zone.id}>
-          <header><span>{zone.nom}</span><small>{zone.lignes?.length ?? 0} ligne{zone.lignes?.length === 1 ? '' : 's'}</small></header>
-          {(zone.lignes ?? []).length ? <div className="sf-line-list">{zone.lignes.map((line) => <div className="sf-production-line" key={line.id}>
-            <div className="sf-production-line-heading"><Activity aria-hidden="true" /><span>{line.nom}</span><small>{line.machines?.length ?? 0} machine{line.machines?.length === 1 ? '' : 's'}</small></div>
-            <div className="sf-machine-tiles">{(line.machines ?? []).length ? line.machines.map((machine) => <Link className={`sf-machine-tile is-${String(machine.statut || '').toLowerCase()}`} to={`/machines/${machine.id}`} key={machine.id} title={`${machine.nom} · ${MACHINE_STATUS_LABELS[machine.statut] ?? machine.statut}`}>
-              <i aria-hidden="true" /><span>{machine.nom}</span><small>{MACHINE_STATUS_LABELS[machine.statut] ?? machine.statut ?? 'Statut inconnu'}</small>
-            </Link>) : <p className="sf-dashboard-empty">Aucune machine sur cette ligne.</p>}</div>
-          </div>)}</div> : <p className="sf-dashboard-empty">Aucune ligne configurée dans cette zone.</p>}
-        </section>)}</div> : <p className="sf-dashboard-empty">Aucune zone configurée pour cette usine.</p>}
-      </section>
-    })}
+  if (loading) return <div className="sf-dashboard-empty sf-factory-empty">Chargement de la structure…</div>
+  if (!plants.length) return <div className="sf-dashboard-empty sf-factory-empty"><Building2 aria-hidden="true" /><span>Aucune usine configurée</span><Link to="/equipements">Configurer la structure <ChevronRight aria-hidden="true" /></Link></div>
+  const zoneCount = plants.reduce((sum, plant) => sum + (plant.zones?.length ?? 0), 0)
+  const machineCount = plants.reduce((total, plant) => total + (plant.zones ?? []).reduce((zoneTotal, zone) => zoneTotal + (zone.lignes ?? []).reduce((lineTotal, line) => lineTotal + (line.machines?.length ?? 0), 0), 0), 0)
+  const example = plants[0]
+  const exampleZones = example.zones ?? []
+  return <div className="sf-factory-overview">
+    <div className="sf-factory-metrics"><span><b>{plants.length}</b><small>Usines</small></span><span><b>{zoneCount}</b><small>Zones</small></span><span><b>{machineCount}</b><small>Machines</small></span></div>
+    <section className="sf-factory-example"><header><Building2 aria-hidden="true" /><div><small>Exemple d’usine</small><b>{example.nom}</b></div><span>{exampleZones.length} zone{exampleZones.length === 1 ? '' : 's'}</span></header>
+      {exampleZones.length ? <div className="sf-factory-example-zones">{exampleZones.slice(0, 2).map((zone) => <span key={zone.id}>{zone.nom}<small>{zone.lignes?.length ?? 0} ligne{zone.lignes?.length === 1 ? '' : 's'}</small></span>)}{exampleZones.length > 2 && <small>+{exampleZones.length - 2} autres zones</small>}</div> : <p className="sf-dashboard-empty sf-factory-empty">Aucune zone dans cet exemple.</p>}
+    </section>
+    <Link to="/equipements" className="sf-structure-link">Explorer toute la structure <ChevronRight aria-hidden="true" /></Link>
   </div>
 }
 
-function LatestActiveAlerts({ alerts, loading }) {
+function LatestActiveAlerts({ count, levels, loading }) {
   if (loading) return <div className="sf-dashboard-empty">Chargement des alertes…</div>
-  if (!alerts.length) return <div className="sf-dashboard-empty"><Bell aria-hidden="true" />Aucune alerte active.</div>
-  return <div className="sf-latest-alerts">{alerts.map((alert) => <Link to={`/alertes?alerte=${alert.id}`} className={`sf-latest-alert is-${String(alert.niveau || '').toLowerCase()}`} key={alert.id}>
-    <span className="sf-alert-indicator" aria-hidden="true" /><span className="sf-latest-alert-copy"><b>{alert.machine_nom || 'Machine'}</b><small>{alert.message || alert.type_alerte_label || 'Alerte active'}</small><small>{alert.capteur_nom ? `${alert.capteur_nom} · ` : ''}{alert.date_declenchement ? new Date(alert.date_declenchement).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Date inconnue'}</small></span><ChevronRight aria-hidden="true" />
-  </Link>)}</div>
+  if (!count) return <div className="sf-alert-summary is-clear"><span className="sf-alert-summary-mark"><Bell aria-hidden="true" /></span><span><b>Aucune alerte active</b><small>Tout est calme sur votre périmètre.</small></span></div>
+  const dominant = Object.entries(levels || {}).sort((a, b) => Number(b[1]) - Number(a[1]))[0]
+  const levelLabels = { CRITIQUE: 'Critique', MAJEURE: 'Majeure', MINEURE: 'Mineure', INFORMATION: 'Information' }
+  return <Link to="/alertes" className={`sf-alert-summary is-${String(dominant?.[0] || 'active').toLowerCase()}`}>
+    <span className="sf-alert-summary-mark"><Bell aria-hidden="true" /></span>
+    <span className="sf-alert-summary-copy"><small>Alertes non acquittées</small><b>{count} alerte{count === 1 ? '' : 's'}</b></span>
+    {dominant && <span className="sf-alert-dominant"><i />{levelLabels[dominant[0]] || dominant[0]} · {dominant[1]}</span>}
+    <ChevronRight aria-hidden="true" />
+  </Link>
 }
 
 function ChartPanel({ title, description, children }) {
@@ -271,19 +270,17 @@ export default function DashboardPage() {
     setError('')
     try {
       const days = lastSevenDays()
-      const [usinesResponse, users, alertStats, latestAlertsResponse, ...machineCountsAndDays] = await Promise.all([
+      const [usinesResponse, users, alertStats, latestAlertsResponse, machineStatusResponse] = await Promise.all([
         getUsines(),
         listUsers({ actif: 'true' }),
-        getAlertStats(),
+        getAlertDashboardStats({
+          'date_declenchement__gte': days[0].params.date_declenchement__gte,
+          'date_declenchement__lte': days[days.length - 1].params.date_declenchement__lte,
+        }),
         getAlerts({ statut: 'ACTIVE', ordering: '-date_declenchement', page_size: 5 }),
-        ...MACHINE_STATUSES.map(({ key }) => getMachines({ statut: key })),
-        ...days.map(({ params }) => getAlertStats(params)),
+        getMachineStatusCounts(),
       ])
-      const machineCounts = machineCountsAndDays.slice(0, MACHINE_STATUSES.length)
-      const dailyStats = machineCountsAndDays.slice(MACHINE_STATUSES.length)
-      const machineStatuses = Object.fromEntries(
-        MACHINE_STATUSES.map(({ key }, index) => [key, resultCount(machineCounts[index])])
-      )
+      const machineStatuses = machineStatusResponse?.par_statut ?? {}
       const machines = Object.values(machineStatuses).reduce((sum, count) => sum + count, 0)
       const usines = usinesResponse?.results ?? usinesResponse ?? []
       const plants = await Promise.all(usines.map((usine) => getUsineHierarchie(usine.id)))
@@ -300,9 +297,9 @@ export default function DashboardPage() {
         activeUsers: resultCount(users) + (user?.actif === false ? 0 : 1),
         plants,
         latestAlerts,
-        alertsByDay: days.map(({ label }, index) => ({
+        alertsByDay: days.map(({ label, dateKey }) => ({
           label,
-          total: dailyStats[index]?.total ?? 0,
+          total: alertStats?.par_jour?.find((day) => day.date === dateKey)?.total ?? 0,
         })),
       })
     } catch {
@@ -385,8 +382,8 @@ export default function DashboardPage() {
           </div>
           <FactoryPlan plants={stats.plants} loading={loading} />
         </ChartPanel>
-        <ChartPanel title="Alertes non acquittées" description="Derniers événements actifs nécessitant une vérification">
-          <LatestActiveAlerts alerts={stats.latestAlerts} loading={loading} />
+        <ChartPanel title="Alertes" description="Synthèse des alertes à traiter">
+          <LatestActiveAlerts count={stats.activeAlerts} levels={stats.alertsByLevel} loading={loading} />
           <Link to="/alertes" className="sf-dashboard-view-all">Voir toutes les alertes <ChevronRight aria-hidden="true" /></Link>
         </ChartPanel>
       </div>

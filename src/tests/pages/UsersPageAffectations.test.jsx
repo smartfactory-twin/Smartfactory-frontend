@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import UsersPage from '../../pages/admin/UsersPage'
+import UserDetailPage from '../../pages/admin/UserDetailPage'
 import { AuthContext } from '../../context/AuthContext'
 import * as authService from '../../services/authService'
 import * as machineService from '../../services/machineService'
@@ -14,6 +15,7 @@ vi.mock('../../services/authService', () => ({
   deleteUser:      vi.fn(),
   updateUserAdmin: vi.fn(),
   getMe:           vi.fn(),
+  getUserAuditHistory: vi.fn(),
 }))
 
 vi.mock('../../services/machineService', () => ({
@@ -110,6 +112,7 @@ beforeEach(() => {
   machineService.getLignes.mockResolvedValue(LIGNES)
   machineService.getMachines.mockResolvedValue([])
   authService.listUsers.mockResolvedValue([EXISTING_USER])
+  authService.getUserAuditHistory.mockResolvedValue({ count: 0, results: [] })
   authService.adminCreateUser.mockResolvedValue({ id: 99 })
   perimetreService.getPerimetres.mockResolvedValue({ count: 0, results: [] })
 })
@@ -434,36 +437,49 @@ describe('UsersPage — modification des affectations', () => {
    Détail utilisateur — lecture seule
    ══════════════════════════════════════════════════════════════════════════ */
 
+function renderUserDetail(userId = 46) {
+  const ctxValue = {
+    user: { id: 1, email: 'admin@smartfactory.tn', role: 'ADMIN' },
+    isAuthenticated: true,
+    isLoading: false,
+    logout: vi.fn(),
+    refreshUser: vi.fn(),
+  }
+  return render(
+    <AuthContext.Provider value={ctxValue}>
+      <MemoryRouter initialEntries={[`/admin/users/${userId}`]}>
+        <Routes>
+          <Route path="/admin/users/:id" element={<UserDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </AuthContext.Provider>
+  )
+}
+
 describe('UsersPage — détail utilisateur', () => {
   it('affiche le périmètre en lecture seule', async () => {
     perimetreService.getPerimetres.mockResolvedValue({
       count: 1, results: [SCOPE_EXISTANTE],
     })
-    renderPage()
-    await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
+    perimetreService.getPerimetres.mockResolvedValue({ count: 1, results: [SCOPE_EXISTANTE] })
+    renderUserDetail()
 
-    await userEvent.click(await screen.findByRole('button', { name: /voir les détails/i }))
-    const detailsDialog = await screen.findByRole('dialog', { name: /détails utilisateur/i })
-
-    expect(await screen.findByText(/Périmètre d.acc.s/)).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.getByText(SCOPE_EXISTANTE.libelle)).toBeInTheDocument()
-    })
-    // Aucun contrôle d'écriture.
-    expect(within(detailsDialog).queryByRole('button', { name: /ajouter une affectation/i })).not.toBeInTheDocument()
-    expect(within(detailsDialog).queryByRole('button', { name: /^Modifier / })).not.toBeInTheDocument()
-    expect(within(detailsDialog).queryByRole('button', { name: /^Supprimer / })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Détail utilisateur' })).toBeInTheDocument()
+    expect(await screen.findByText('Affectations et périmètre d’accès')).toBeInTheDocument()
+    expect(await screen.findByText(SCOPE_EXISTANTE.libelle)).toBeInTheDocument()
+    expect(perimetreService.getPerimetres).toHaveBeenCalledWith({ utilisateur: 46 })
+    // Le détail dédié présente les affectations sans contrôle d'écriture.
+    expect(screen.queryByRole('button', { name: /ajouter une affectation/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Modifier / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Supprimer / })).not.toBeInTheDocument()
   })
 
   it('indique l’accès global pour un ADMIN', async () => {
     authService.listUsers.mockResolvedValue([
       { ...EXISTING_USER, id: 2, role: 'ADMIN', email: 'admin@sf.tn' },
     ])
-    renderPage()
-    await waitFor(() => expect(authService.listUsers).toHaveBeenCalled())
-
-    await userEvent.click(await screen.findByRole('button', { name: /voir les détails/i }))
-    expect(await screen.findByText(/Accès global — aucune affectation requise/)).toBeInTheDocument()
+    renderUserDetail(2)
+    expect(await screen.findByText('L’administrateur dispose d’un accès global.')).toBeInTheDocument()
     expect(perimetreService.getPerimetres).not.toHaveBeenCalled()
   })
 })
