@@ -16,6 +16,7 @@ vi.mock('../../services/authService', () => ({
   updateUserAdmin: vi.fn(),
   getMe:           vi.fn(),
   getUserAuditHistory: vi.fn(),
+  getUserActivityHistory: vi.fn(),
 }))
 
 vi.mock('../../services/machineService', () => ({
@@ -113,6 +114,7 @@ beforeEach(() => {
   machineService.getMachines.mockResolvedValue([])
   authService.listUsers.mockResolvedValue([EXISTING_USER])
   authService.getUserAuditHistory.mockResolvedValue({ count: 0, results: [] })
+  authService.getUserActivityHistory.mockResolvedValue({ count: 0, results: [] })
   authService.adminCreateUser.mockResolvedValue({ id: 99 })
   perimetreService.getPerimetres.mockResolvedValue({ count: 0, results: [] })
 })

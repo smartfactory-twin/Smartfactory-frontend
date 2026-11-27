@@ -112,7 +112,7 @@ describe('Assistant vocal — enregistrement et transcription', () => {
     expect(voiceService.transcribeVoiceAudio).toHaveBeenCalledTimes(1)
     expect(voiceService.sendVoiceAgentMessage).not.toHaveBeenCalled()
     expect(stoppedTracks).toContain('stopped')
-    expect(screen.getByText(/^Moteur : Whisper$/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Moteur : Whisper$/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /envoyer/i }))
     await waitFor(() => expect(voiceService.sendVoiceAgentMessage).toHaveBeenCalledWith('Lire les machines', null, 'voice'))
   }, 30_000)
@@ -182,7 +182,7 @@ describe('Assistant vocal — enregistrement et transcription', () => {
     await waitFor(() => expect(recognitionInstances).toHaveLength(1))
     act(() => recognitionInstances[0].onresult({ results: [[{ transcript: 'Liste les machines' }]] }))
     expect(await screen.findByLabelText(/votre demande vocale ou textuelle/i)).toHaveValue('Liste les machines')
-    expect(screen.getByText(/^Moteur : Reconnaissance navigateur$/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Moteur : Reconnaissance navigateur$/)).not.toBeInTheDocument()
     expect(voiceService.sendVoiceAgentMessage).not.toHaveBeenCalled()
   })
 

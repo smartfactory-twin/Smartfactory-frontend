@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { login as loginService, loginWithGoogle as googleLoginService, logout as logoutService, getMe } from '../services/authService'
+import { login as loginService, logout as logoutService, getMe } from '../services/authService'
 
 // Export nommé pour les tests (AuthContext.Provider dans les mocks)
 export const AuthContext = createContext(null)
@@ -48,15 +48,6 @@ export function AuthProvider({ children }) {
     return { mustReset: false, role: fullUser.role }
   }, [])
 
-  const loginWithGoogle = useCallback(async (credential) => {
-    const data = await googleLoginService(credential)
-    localStorage.setItem('sf_access', data.access)
-    localStorage.setItem('sf_refresh', data.refresh)
-    const fullUser = await getMe()
-    setUser(fullUser)
-    setIsAuth(true)
-    return { role: fullUser.role }
-  }, [])
 
   const logout = useCallback(async () => {
     const refresh = localStorage.getItem('sf_refresh')
@@ -79,7 +70,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, loginWithGoogle, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

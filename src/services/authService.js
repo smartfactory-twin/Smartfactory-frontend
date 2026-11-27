@@ -9,11 +9,6 @@ export const login = async (email, password) => {
   return data
 }
 
-/** POST /auth/google-login/ — échange un credential Google vérifié par Django. */
-export const loginWithGoogle = async (credential) => {
-  const { data } = await api.post('/auth/google-login/', { credential })
-  return data
-}
 
 /**
  * POST /auth/logout/
