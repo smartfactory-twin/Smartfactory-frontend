@@ -11,8 +11,8 @@ for (const account of accounts) {
     test.skip(!account.email || !account.password, `Renseigner les variables E2E pour ${account.role}.`)
 
     await page.goto('/login')
-    await page.getByPlaceholder('Saisissez votre adresse e-mail').fill(account.email)
-    await page.getByPlaceholder('••••••••').fill(account.password)
+    await page.getByLabel('Adresse e-mail').fill(account.email)
+    await page.getByLabel('Mot de passe', { exact: true }).fill(account.password)
     await page.getByRole('button', { name: /se connecter/i }).click()
     await expect(page).toHaveURL(new RegExp(`${account.home.replaceAll('/', '\\/')}$`))
   })
@@ -23,8 +23,8 @@ for (const account of accounts.filter(({ role }) => role !== 'ADMIN')) {
     test.skip(!account.email || !account.password, `Renseigner les variables E2E pour ${account.role}.`)
 
     await page.goto('/login')
-    await page.getByPlaceholder('Saisissez votre adresse e-mail').fill(account.email)
-    await page.getByPlaceholder('••••••••').fill(account.password)
+    await page.getByLabel('Adresse e-mail').fill(account.email)
+    await page.getByLabel('Mot de passe', { exact: true }).fill(account.password)
     await page.getByRole('button', { name: /se connecter/i }).click()
     await expect(page).toHaveURL(new RegExp(`${account.home.replaceAll('/', '\\/')}$`))
     await page.goto('/admin/users')
