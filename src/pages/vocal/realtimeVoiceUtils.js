@@ -17,7 +17,7 @@ export const WHISPER_SILENCE_HALLUCINATIONS = Object.freeze([
   'merci d avoir regarde cette video',
   'sous titres realises par la communaute',
   'sous titrage realise par la communaute',
-  'abonnez vous',SpeechRecognition
+  'abonnez vous'
 ])
 
 export function isSpeechSynthesisAvailable(targetWindow = globalThis.window) {

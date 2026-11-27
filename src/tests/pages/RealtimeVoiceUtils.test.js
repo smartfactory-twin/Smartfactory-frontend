@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   calculateRms,
+  REALTIME_VOICE_LIMITS,
   classifyRealtimeTranscript,
   createSpeechQueue,
   createVadState,
@@ -20,8 +21,8 @@ describe('realtime voice helpers', () => {
     const state = createVadState()
     expect(observeVad(state, 0.08, 1000)).toBe('start')
     expect(observeVad(state, 0.08, 1500)).toBeNull()
-    expect(observeVad(state, 0, 2399)).toBeNull()
-    expect(observeVad(state, 0, 2400)).toEqual({ type: 'finish', durationMs: 500 })
+    expect(observeVad(state, 0, 2399, { silenceMs: 900 })).toBeNull()
+    expect(observeVad(state, 0, 2400, { silenceMs: 900 })).toEqual({ type: 'finish', durationMs: 500 })
   })
 
   it('does not start a segment on silence alone', () => {
@@ -33,9 +34,9 @@ describe('realtime voice helpers', () => {
   it('measures audio level and rejects segments below duration or byte thresholds', () => {
     expect(calculateRms(new Uint8Array([128, 128, 128]))).toBe(0)
     expect(calculateRms(new Uint8Array([255, 0]))).toBeGreaterThan(0.9)
-    expect(isUsableAudioSegment(449, 5000)).toBe(false)
-    expect(isUsableAudioSegment(450, 1199)).toBe(false)
-    expect(isUsableAudioSegment(450, 1200)).toBe(true)
+    expect(isUsableAudioSegment(REALTIME_VOICE_LIMITS.minimumSpeechMs - 1, REALTIME_VOICE_LIMITS.minimumAudioBytes)).toBe(false)
+    expect(isUsableAudioSegment(REALTIME_VOICE_LIMITS.minimumSpeechMs, REALTIME_VOICE_LIMITS.minimumAudioBytes - 1)).toBe(false)
+    expect(isUsableAudioSegment(REALTIME_VOICE_LIMITS.minimumSpeechMs, REALTIME_VOICE_LIMITS.minimumAudioBytes)).toBe(true)
   })
 
   it('ignores empty, punctuation-only and common Whisper silence hallucinations', () => {

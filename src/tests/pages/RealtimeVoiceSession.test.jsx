@@ -32,9 +32,11 @@ class MockRecorder {
 
 class MockUtterance { constructor(text) { this.text = text } }
 class MockAudioContext {
-  constructor() { this.state = 'running' }
+  constructor() { this.state = 'running'; this.destination = {} }
+  resume() { return Promise.resolve() }
   createAnalyser() { return { fftSize: 1024, connect: vi.fn(), disconnect: vi.fn(), getByteTimeDomainData: (buffer) => buffer.fill(sample) } }
   createMediaStreamSource() { return { connect: vi.fn(), disconnect: vi.fn() } }
+  createGain() { return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() } }
   close() { this.state = 'closed'; return Promise.resolve() }
 }
 
@@ -173,6 +175,8 @@ describe('real-time voice session', () => {
     expect(signal.aborted).toBe(false)
     expect(voiceService.transcribeVoiceSessionAudio).toHaveBeenCalledTimes(1)
     runFrame(255, 2800)
+    expect(signal.aborted).toBe(false)
+    runFrame(255, 2930)
     expect(signal.aborted).toBe(true)
     expect(window.speechSynthesis.cancel).toHaveBeenCalled()
   })

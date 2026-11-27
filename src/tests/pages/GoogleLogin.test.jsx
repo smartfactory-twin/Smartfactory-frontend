@@ -18,9 +18,10 @@ describe('Connexion Google', () => {
     navigate.mockClear()
   })
 
-  it('masque le bouton Google sans client ID', () => {
+  it('affiche le bouton Google désactivé sans client ID', () => {
     renderPage()
-    expect(screen.queryByLabelText('Connexion avec Google')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connexion avec Google — configuration requise' })).toBeDisabled()
+    expect(screen.getByText('Connexion Google à configurer par l’administrateur.')).toBeInTheDocument()
   })
 
   it('transmet le credential reçu à AuthContext et redirige selon le rôle', async () => {
